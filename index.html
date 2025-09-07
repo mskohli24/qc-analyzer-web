@@ -79,17 +79,16 @@
   // logging helpers
   function log(s) { console.log(s); logBox.textContent = (new Date()).toLocaleTimeString() + " — " + s + "\n" + logBox.textContent; }
   function setStatus(s){ status.textContent = s; log(s); }
-  function showProgress(p){ prog.style.display='block'; progFill.style.width = Math.round(p*100)+'%'; }
+  function showProgressValue(p){ prog.style.display='block'; progFill.style.width = Math.round(p*100)+'%'; }
   function hideProgress(){ prog.style.display='none'; progFill.style.width = '0%'; }
 
   // create worker with langPath CDN to avoid fetch issues
   const worker = Tesseract.createWorker({
     logger: m => {
-      // display logger messages with percent
       if (m && m.status) {
         const pct = m.progress ? Math.round(m.progress*100) : '';
         setStatus(`${m.status}${pct ? ' — ' + pct + '%' : ''}`);
-        if (typeof m.progress === 'number') showProgress(m.progress);
+        if (typeof m.progress === 'number') showProgressValue(m.progress);
       }
     },
     langPath: 'https://tessdata.projectnaptha.com/4.0.0'
@@ -110,8 +109,8 @@
     log('OCR init error: ' + e);
   }
 
-  // helper: downscale image to max dimension for mobile (keeps memory low)
-  async function downscaleImage(file, maxDim=1400){
+  // downscale large images for mobile
+  async function downscaleImage(file, maxDim=1200){
     return new Promise((res, rej) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
@@ -142,14 +141,12 @@
     const lines = raw.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
     const rows = [];
     for (let ln of lines) {
-      // skip obvious headers
       if (/mean|sd|result|test|flag|sr|lot|consumable|curve|interval/i.test(ln)) continue;
       const nums = ln.match(/[-+]?\d*\.?\d+/g) || [];
       const toks = ln.split(/\s+/);
       const testTok = toks.find(t => /[A-Za-z]/.test(t)) || 'UNKNOWN';
       let result=null, mean=null, sd=null;
       if (nums.length>=3) {
-        // heuristic: last 3 numbers map to result, mean, sd (matches many analyzers)
         result = parseFloat(nums[nums.length-3]);
         mean   = parseFloat(nums[nums.length-2]);
         sd     = parseFloat(nums[nums.length-1]);
@@ -159,10 +156,10 @@
     return rows;
   }
 
-  // simple Westgard checks (single-run)
+  // Westgard checks
   function applyWestgard(rows) {
     const flags = [];
-    rows.forEach((r,i) => {
+    rows.forEach((r) => {
       if (r.result == null || r.mean == null || r.sd == null || r.sd <= 0) return;
       const z = (r.result - r.mean) / r.sd;
       if (Math.abs(z) > 3) flags.push({test:r.test, rule:'1:3s Violation', z});
@@ -171,7 +168,6 @@
     return flags;
   }
 
-  // render helpers
   function renderRows(rows, rawText) {
     if (!rows.length) {
       resultArea.innerHTML = '<div class="small">No rows detected. Try cropping to the numeric columns and re-upload.</div>';
@@ -196,20 +192,24 @@
   }
   function escapeHtml(s){ return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-  // perform OCR on a Blob/image element
+  // ----- CORRECTED doOCR(): use worker.recognize(...) properly -----
   async function doOCR(blobOrImage) {
     try {
       setStatus('Starting OCR (recognition)…');
-      showProgress(0.02);
-      // if blob provided, use worker.recognize on blob
-      const res = await worker.recognize(blobOrImage);
-      showProgress(1);
+      showProgressValue(0.02);
+
+      // CORRECT worker API usage:
+      const { data } = await worker.recognize(blobOrImage);
+
+      showProgressValue(1);
       hideProgress();
       setStatus('OCR complete — parsing text');
-      const raw = res.data ? res.data.text : (res.text || '');
+
+      const raw = data.text || '';
       const rows = parseTextToRows(raw);
       renderRows(rows, raw);
       renderFindings(applyWestgard(rows));
+
     } catch (err) {
       hideProgress();
       setStatus('OCR failed: ' + (err.message || err), false);
@@ -220,21 +220,19 @@
   }
 
   // file handling / auto-run OCR
-  let lastPrepared = null; // holds {blob, previewImg}
+  let lastPrepared = null;
   fileInput.addEventListener('change', async (evt) => {
     const f = evt.target.files && evt.target.files[0];
     if (!f) return;
     setStatus('Image selected. Preparing (downscaling) — please wait');
-    showProgress(0.02);
+    showProgressValue(0.02);
     try {
-      const prepared = await downscaleImage(f, 1200); // shrink large images to <=1200px
+      const prepared = await downscaleImage(f, 1200);
       lastPrepared = prepared;
-      // show preview
       preview.style.display = 'block';
       preview.innerHTML = `<img src="${prepared.previewImg}" alt="preview">`;
-      setStatus('Image ready. Tap Start OCR to begin (or will auto-run in 1s)...');
+      setStatus('Image ready. Tap Start OCR to begin (or it will auto-run shortly)...');
       hideProgress();
-      // auto-run OCR after short delay (lets user cancel)
       setTimeout(() => {
         if (lastPrepared === prepared) { startOCR(); }
       }, 900);
@@ -245,11 +243,10 @@
     }
   });
 
-  // start button & manual OCR
   async function startOCR() {
     if (!lastPrepared) { setStatus('No image selected. Please choose an image first.', false); return; }
     setStatus('Running OCR — this may take 10–60s depending on device');
-    showProgress(0.05);
+    showProgressValue(0.05);
     await doOCR(lastPrepared.blob);
   }
   startBtn.addEventListener('click', startOCR);
@@ -260,7 +257,7 @@
   });
 
   // helper: show/hide progress
-  function showProgress(p){ prog.style.display='block'; progFill.style.width = String(Math.round((p||0)*100)) + '%'; }
+  function showProgressValue(p){ prog.style.display='block'; progFill.style.width = String(Math.round((p||0)*100)) + '%'; }
   function hideProgress(){ prog.style.display='none'; progFill.style.width='0%'; }
 
   // initial status
