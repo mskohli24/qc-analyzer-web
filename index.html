@@ -2,178 +2,154 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>QC Analyzer — Client-side OCR + Westgard</title>
+  <title>QC Analyzer — Robust Client-side OCR</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <!-- Tesseract.js -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
   <style>
-    :root{
-      --bg:#f7f9fc;
-      --card:#ffffff;
-      --muted:#6b7280;
-      --accent:#0366d6;
-      --danger:#c02616;
-      --success:#0f766e;
-      --radius:12px;
-      --gap:12px;
-      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-    }
-    body{background:var(--bg); margin:0; padding:16px; color:#111;}
-    .container{max-width:1000px; margin:0 auto;}
-    header{display:flex;align-items:flex-start;gap:12px; margin-bottom:14px;}
+    :root{--bg:#f7f9fc;--card:#fff;--muted:#6b7280;--accent:#0366d6;--danger:#c02616;--success:#0f766e;--radius:12px}
+    body{background:var(--bg);margin:0;padding:14px;font-family:Inter,system-ui,Roboto,Arial;color:#111}
+    .container{max-width:980px;margin:0 auto}
+    .card{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 6px 18px rgba(12,38,63,0.06);margin-bottom:12px}
     h1{margin:0;font-size:1.25rem}
-    p.lead{margin:4px 0 0;color:var(--muted);font-size:0.95rem}
-    .layout{display:grid;grid-template-columns:1fr 360px;gap:var(--gap);}
-    @media (max-width:900px){ .layout{grid-template-columns:1fr;}}
-    .card{background:var(--card); border-radius:var(--radius); padding:14px; box-shadow: 0 6px 18px rgba(12,38,63,0.06); }
-    .uploader{display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap}
-    .upload-btn{flex:1; border:2px dashed #d1d5db; background:linear-gradient(180deg,#fff,#fbfdff); padding:12px 14px; border-radius:10px; text-align:center; cursor:pointer; font-weight:600;color:#0b5ed7}
-    .upload-btn:hover{background:#f3f8ff}
+    .upload-btn{display:inline-block;padding:12px;border-radius:10px;border:2px dashed #d1d5db;background:#fff;cursor:pointer;font-weight:700;color:var(--accent)}
     input[type=file]{display:none}
-    .hint{font-size:0.85rem;color:var(--muted); margin-top:8px}
-    .preview{max-height:320px; overflow:hidden; border-radius:8px; margin-top:12px; border:1px solid #eee}
-    .preview img{width:100%; display:block; object-fit:contain}
-    .status{margin-top:10px;font-size:0.95rem;color:var(--muted)}
-    .small{font-size:0.85rem;color:var(--muted)}
-    table{width:100%; border-collapse:collapse; margin-top:10px; font-size:0.9rem}
-    th,td{padding:8px;border-bottom:1px solid #f1f5f9; text-align:center}
-    th{background:#fbfdff;font-weight:700;color:#111;font-size:0.85rem}
-    .flex-col{display:flex;flex-direction:column;gap:10px}
-    .row{display:flex;gap:10px;align-items:center}
-    .muted{color:var(--muted)}
-    .flag-warning{background:#fff7ed;color:#b45309;padding:6px;border-radius:8px;font-weight:600}
-    .flag-danger{background:#fff1f2;color:var(--danger);padding:6px;border-radius:8px;font-weight:600}
-    .flag-ok{background:#ecfeff;color:var(--success);padding:6px;border-radius:8px;font-weight:600}
-    .right-card{position:sticky; top:16px}
+    .hint{color:var(--muted);margin-top:8px;font-size:0.9rem}
+    .preview{margin-top:12px;border-radius:8px;overflow:hidden;border:1px solid #eee}
+    .preview img{width:100%;display:block}
+    .row{display:flex;gap:8px;align-items:center}
+    .small{font-size:0.9rem;color:var(--muted)}
+    .status{margin-top:10px;font-size:0.95rem;color:#333}
     .progress{height:8px;background:#eef2ff;border-radius:999px;overflow:hidden;margin-top:8px}
     .progress > span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#5aa0ff);width:0%}
-    .footer-note{margin-top:18px;color:var(--muted);font-size:0.85rem;text-align:center}
+    pre.debug{background:#0b1220;color:#e6f0ff;padding:8px;border-radius:8px;max-height:180px;overflow:auto;font-size:0.8rem}
+    button.primary{background:var(--accent);color:#fff;border:none;padding:8px 10px;border-radius:8px;cursor:pointer}
+    button.ghost{background:#fff;border:1px solid #ddd;padding:8px 10px;border-radius:8px;cursor:pointer}
   </style>
 </head>
 <body>
   <div class="container">
-    <header>
-      <div>
-        <h1>AI QC Analyzer — Client-side OCR</h1>
-        <p class="lead">Upload a screenshot of your QC table (columns: Test, Result, Mean, SD). OCR runs in your browser — nothing is uploaded to any server.</p>
+    <div class="card">
+      <h1>AI QC Analyzer — Robust OCR</h1>
+      <div class="hint">Upload a clear screenshot of the QC table (Test / Result / Mean / SD). OCR runs in your browser — nothing is uploaded.</div>
+
+      <div style="margin-top:12px" class="row">
+        <label for="fileinput" class="upload-btn">📤 Click here to upload QC image</label>
+        <input id="fileinput" type="file" accept="image/*">
+        <button id="startBtn" class="primary" style="margin-left:auto">Start OCR</button>
       </div>
-    </header>
 
-    <div class="layout">
-      <!-- Main column -->
-      <main>
-        <div class="card">
-          <div class="uploader">
-            <label for="fileinput" class="upload-btn">📤 Click here to upload QC image</label>
-            <input id="fileinput" type="file" accept="image/*" />
-            <div style="min-width:120px;text-align:right">
-              <button id="cropHint" style="background:#0b5ed7;color:#fff;padding:8px 10px;border-radius:8px;border:none;cursor:pointer">Crop tips</button>
-            </div>
-          </div>
-          <div class="hint">Tip: crop to include only the table columns (Test, Result, Mean, SD) for better OCR accuracy.</div>
+      <div class="hint">Tip: crop to just the table numeric columns for best results. If OCR doesn't start automatically, tap <em>Start OCR</em>.</div>
 
-          <div id="statusBlock" class="status"></div>
-          <div id="progressBar" class="progress" style="display:none"><span id="progressFill"></span></div>
+      <div id="status" class="status small">Initializing OCR engine — please wait…</div>
+      <div class="progress" id="prog" style="display:none"><span id="progFill"></span></div>
 
-          <div id="previewCard" class="preview" style="display:none"></div>
-        </div>
-
-        <div class="card" style="margin-top:12px">
-          <h3 style="margin:0 0 6px 0">Extracted table (best effort)</h3>
-          <div id="resultArea" class="small muted">No image uploaded yet.</div>
-        </div>
-
-        <div class="card" style="margin-top:12px">
-          <h3 style="margin:0 0 6px 0">Westgard findings</h3>
-          <div id="findingsArea" class="small muted">No findings yet.</div>
-        </div>
-
-      </main>
-
-      <!-- Right column -->
-      <aside class="right-card">
-        <div class="card">
-          <h4 style="margin:0 0 8px 0">How to use</h4>
-          <ol class="small muted" style="padding-left:18px;margin:0">
-            <li>Tap <strong>Click here to upload</strong> and choose photo.</li>
-            <li>Wait for OCR progress (shows percent).</li>
-            <li>Review extracted rows and any Westgard flags.</li>
-          </ol>
-          <div style="height:12px"></div>
-          <div class="small muted">If parsing fails: crop the image to the numeric columns and try again.</div>
-        </div>
-
-        <div class="card" style="margin-top:12px">
-          <h4 style="margin:0 0 8px 0">Legend</h4>
-          <div class="row"><div class="flag-ok">OK</div><div class="muted">No rule violation</div></div>
-          <div style="height:6px"></div>
-          <div class="row"><div class="flag-warning">1:2s</div><div class="muted">Warning</div></div>
-          <div style="height:6px"></div>
-          <div class="row"><div class="flag-danger">1:3s</div><div class="muted">Reject run</div></div>
-        </div>
-      </aside>
+      <div id="preview" class="preview" style="display:none"></div>
     </div>
 
-    <div class="footer-note">Built for MD Biochemistry poster demos • Runs entirely on device (Tesseract.js)</div>
+    <div class="card">
+      <h3 style="margin:0 0 8px 0">Extracted table (best effort)</h3>
+      <div id="resultArea" class="small">No image processed yet.</div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin:0 0 8px 0">Westgard findings</h3>
+      <div id="findings" class="small">No findings yet.</div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin:0 0 8px 0">Debug / Logs</h3>
+      <div><strong class="small">Status messages:</strong></div>
+      <pre id="log" class="debug">waiting...</pre>
+    </div>
   </div>
 
 <script>
-(async ()=> {
-  // Setup worker with CDN language path
+(async () => {
+  // UI refs
+  const fileInput = document.getElementById('fileinput');
+  const preview = document.getElementById('preview');
+  const status = document.getElementById('status');
+  const prog = document.getElementById('prog');
+  const progFill = document.getElementById('progFill');
+  const resultArea = document.getElementById('resultArea');
+  const findings = document.getElementById('findings');
+  const logBox = document.getElementById('log');
+  const startBtn = document.getElementById('startBtn');
+
+  // logging helpers
+  function log(s) { console.log(s); logBox.textContent = (new Date()).toLocaleTimeString() + " — " + s + "\n" + logBox.textContent; }
+  function setStatus(s){ status.textContent = s; log(s); }
+  function showProgress(p){ prog.style.display='block'; progFill.style.width = Math.round(p*100)+'%'; }
+  function hideProgress(){ prog.style.display='none'; progFill.style.width = '0%'; }
+
+  // create worker with langPath CDN to avoid fetch issues
   const worker = Tesseract.createWorker({
-    logger: m => onLog(m),
+    logger: m => {
+      // display logger messages with percent
+      if (m && m.status) {
+        const pct = m.progress ? Math.round(m.progress*100) : '';
+        setStatus(`${m.status}${pct ? ' — ' + pct + '%' : ''}`);
+        if (typeof m.progress === 'number') showProgress(m.progress);
+      }
+    },
     langPath: 'https://tessdata.projectnaptha.com/4.0.0'
   });
 
-  // DOM refs
-  const fileInput = document.getElementById('fileinput');
-  const previewCard = document.getElementById('previewCard');
-  const statusBlock = document.getElementById('statusBlock');
-  const resultArea = document.getElementById('resultArea');
-  const findingsArea = document.getElementById('findingsArea');
-  const progressBar = document.getElementById('progressBar');
-  const progressFill = document.getElementById('progressFill');
-
-  // helper
-  function setStatus(txt, muted=true){ statusBlock.innerHTML = txt; statusBlock.style.color = muted ? '#374151' : '#111'; }
-  function showPreview(img){ previewCard.style.display='block'; previewCard.innerHTML=''; previewCard.appendChild(img); }
-  function hidePreview(){ previewCard.style.display='none'; previewCard.innerHTML=''; }
-  function showProgress(){ progressBar.style.display='block'; }
-  function hideProgress(){ progressBar.style.display='none'; progressFill.style.width='0%'; }
-  function updateProgress(p){ progressFill.style.width = Math.round(p*100) + '%'; }
-
-  // Tesseract log handler
-  function onLog(m){
-    // m looks like {status:'recognizing text', progress:0.3}
-    if (m.status && typeof m.progress === 'number') {
-      setStatus(m.status + ' — ' + Math.round(m.progress*100) + '%');
-      updateProgress(m.progress);
-    } else if (m.status) {
-      setStatus(m.status);
-    }
+  // initialize worker
+  try {
+    setStatus('Loading OCR engine (this may take a few seconds)...');
+    log('worker.load()');
+    await worker.load();
+    log('worker.loadLanguage(eng)');
+    await worker.loadLanguage('eng');
+    log('worker.initialize(eng)');
+    await worker.initialize('eng');
+    setStatus('OCR ready. Upload an image or press Start OCR after selecting one.');
+  } catch (e) {
+    setStatus('OCR init failed: ' + (e.message || e));
+    log('OCR init error: ' + e);
   }
 
-  // Initialize worker (load models once)
-  setStatus('Initializing OCR engine (first load may take a few seconds)…');
-  showProgress();
-  await worker.load();
-  await worker.loadLanguage('eng');
-  await worker.initialize('eng');
-  hideProgress();
-  setStatus('Ready. Upload a QC screenshot.');
+  // helper: downscale image to max dimension for mobile (keeps memory low)
+  async function downscaleImage(file, maxDim=1400){
+    return new Promise((res, rej) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        let {width:w, height:h} = img;
+        let scale = Math.min(1, maxDim / Math.max(w,h));
+        if (scale < 1) { w = Math.round(w*scale); h = Math.round(h*scale); }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(blob => {
+          URL.revokeObjectURL(url);
+          res({blob, previewImg: canvas.toDataURL('image/jpeg', 0.85)});
+        }, 'image/jpeg', 0.85);
+      };
+      img.onerror = (err) => {
+        URL.revokeObjectURL(url);
+        rej(err);
+      };
+      img.src = url;
+    });
+  }
 
-  // parse lines -> rows heuristic
+  // parse OCR text heuristically into rows
   function parseTextToRows(raw) {
+    if (!raw) return [];
     const lines = raw.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
     const rows = [];
     for (let ln of lines) {
-      if (/mean|sd|result|test|flag|sr|lot|consumable|curve/i.test(ln)) continue; // skip header-ish lines
+      // skip obvious headers
+      if (/mean|sd|result|test|flag|sr|lot|consumable|curve|interval/i.test(ln)) continue;
       const nums = ln.match(/[-+]?\d*\.?\d+/g) || [];
       const toks = ln.split(/\s+/);
       const testTok = toks.find(t => /[A-Za-z]/.test(t)) || 'UNKNOWN';
       let result=null, mean=null, sd=null;
       if (nums.length>=3) {
-        // heuristic: pick last 3 as result, mean, sd (matches many analyzer screenshots)
+        // heuristic: last 3 numbers map to result, mean, sd (matches many analyzers)
         result = parseFloat(nums[nums.length-3]);
         mean   = parseFloat(nums[nums.length-2]);
         sd     = parseFloat(nums[nums.length-1]);
@@ -183,92 +159,112 @@
     return rows;
   }
 
-  // Basic Westgard checks for single-run rows
+  // simple Westgard checks (single-run)
   function applyWestgard(rows) {
-    const findings = [];
-    rows.forEach((r, i)=>{
-      if (r.result==null || r.mean==null || r.sd==null || r.sd<=0) return;
-      const z = (r.result - r.mean)/r.sd;
-      if (Math.abs(z) > 3) findings.push({test:r.test, rule:'1:3s Violation', z, row:i});
-      else if (Math.abs(z) > 2) findings.push({test:r.test, rule:'1:2s Warning', z, row:i});
+    const flags = [];
+    rows.forEach((r,i) => {
+      if (r.result == null || r.mean == null || r.sd == null || r.sd <= 0) return;
+      const z = (r.result - r.mean) / r.sd;
+      if (Math.abs(z) > 3) flags.push({test:r.test, rule:'1:3s Violation', z});
+      else if (Math.abs(z) > 2) flags.push({test:r.test, rule:'1:2s Warning', z});
     });
-    return findings;
+    return flags;
   }
 
+  // render helpers
   function renderRows(rows, rawText) {
-    if (!rows || rows.length===0) { resultArea.innerHTML = '<div class="muted small">No rows detected from OCR. Try cropping to the numeric columns and re-upload.</div>'; return; }
-    let html = '<table><thead><tr><th>Test</th><th>Result</th><th>Mean</th><th>SD</th></tr></thead><tbody>';
-    rows.forEach(r=>{
-      html += `<tr><td>${escapeHtml(r.test)}</td><td>${(r.result==null?'-':r.result)}</td><td>${(r.mean==null?'-':r.mean)}</td><td>${(r.sd==null?'-':r.sd)}</td></tr>`;
+    if (!rows.length) {
+      resultArea.innerHTML = '<div class="small">No rows detected. Try cropping to the numeric columns and re-upload.</div>';
+      return;
+    }
+    let html = '<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#fafafa"><th style="padding:6px">Test</th><th>Result</th><th>Mean</th><th>SD</th></tr></thead><tbody>';
+    rows.forEach(r => {
+      html += `<tr><td style="padding:6px">${escapeHtml(r.test)}</td><td>${r.result ?? '-'}</td><td>${r.mean ?? '-'}</td><td>${r.sd ?? '-'}</td></tr>`;
     });
-    html += '</tbody></table>';
-    html += `<div style="margin-top:8px" class="small muted"><strong>Raw OCR sample:</strong> ${escapeHtml(rawText.slice(0,400))}</div>`;
+    html += `</tbody></table><div style="margin-top:8px" class="small">Raw OCR sample: ${escapeHtml(rawText.slice(0,400))}</div>`;
     resultArea.innerHTML = html;
   }
-
-  function renderFindings(findings) {
-    if (!findings || findings.length===0) { findingsArea.innerHTML = '<div class="flag-ok">No Westgard violations detected.</div>'; return; }
+  function renderFindings(flags) {
+    if (!flags.length) { findings.innerHTML = '<div style="color:green;font-weight:700">No Westgard violations detected.</div>'; return; }
     let html = '<ul style="padding-left:18px;margin:0">';
-    findings.forEach(f=>{
-      const cls = f.rule.includes('3s') ? 'flag-danger' : 'flag-warning';
-      html += `<li style="margin-bottom:8px"><div class="${cls}">${escapeHtml(f.test)} — ${escapeHtml(f.rule)} (z=${(f.z||0).toFixed(2)})</div></li>`;
+    flags.forEach(f => {
+      const cls = f.rule.includes('3s') ? 'color:#c02616' : 'color:#b45309';
+      html += `<li style="margin-bottom:6px"><span style="${cls};font-weight:700">${escapeHtml(f.test)} — ${escapeHtml(f.rule)}</span> <span class="small"> (z=${f.z.toFixed(2)})</span></li>`;
     });
     html += '</ul>';
-    findingsArea.innerHTML = html;
+    findings.innerHTML = html;
   }
-
   function escapeHtml(s){ return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-  // Upload handler
-  fileInput.addEventListener('change', async (evt)=>{
-    const file = evt.target.files[0];
-    if (!file) return;
-    setStatus('Loading image...');
-    showProgress();
-    updateProgress(0.05);
-    // preview
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.src = url;
-    img.style.maxWidth = '100%';
-    img.onload = async ()=> {
+  // perform OCR on a Blob/image element
+  async function doOCR(blobOrImage) {
+    try {
+      setStatus('Starting OCR (recognition)…');
+      showProgress(0.02);
+      // if blob provided, use worker.recognize on blob
+      const res = await worker.recognize(blobOrImage);
+      showProgress(1);
       hideProgress();
-      showPreview(img);
-      // Start OCR
-      setStatus('Starting OCR — please wait');
-      showProgress();
-      try {
-        const { data } = await worker.recognize(img, { // recognize via worker (uses created worker logger)
-          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.-/:% ' // small help
-        });
-        updateProgress(1);
-        hideProgress();
-        setStatus('OCR complete — parsing results');
-        const raw = data.text || '';
-        const rows = parseTextToRows(raw);
-        renderRows(rows, raw);
-        const findings = applyWestgard(rows);
-        renderFindings(findings);
-      } catch (err) {
-        hideProgress();
-        setStatus('OCR error: ' + (err.message||err), false);
-        resultArea.innerHTML = '<div class="muted small">OCR error occurred. Try cropping image or reload the page.</div>';
-        findingsArea.innerHTML = '';
-        console.error(err);
-      }
-    };
-    img.onerror = ()=>{ hideProgress(); setStatus('Failed to load image', false); }
+      setStatus('OCR complete — parsing text');
+      const raw = res.data ? res.data.text : (res.text || '');
+      const rows = parseTextToRows(raw);
+      renderRows(rows, raw);
+      renderFindings(applyWestgard(rows));
+    } catch (err) {
+      hideProgress();
+      setStatus('OCR failed: ' + (err.message || err), false);
+      log('OCR error: ' + err);
+      resultArea.innerHTML = '<div class="small">OCR failed. Try cropping to numeric columns or use a different photo.</div>';
+      findings.innerHTML = '';
+    }
+  }
+
+  // file handling / auto-run OCR
+  let lastPrepared = null; // holds {blob, previewImg}
+  fileInput.addEventListener('change', async (evt) => {
+    const f = evt.target.files && evt.target.files[0];
+    if (!f) return;
+    setStatus('Image selected. Preparing (downscaling) — please wait');
+    showProgress(0.02);
+    try {
+      const prepared = await downscaleImage(f, 1200); // shrink large images to <=1200px
+      lastPrepared = prepared;
+      // show preview
+      preview.style.display = 'block';
+      preview.innerHTML = `<img src="${prepared.previewImg}" alt="preview">`;
+      setStatus('Image ready. Tap Start OCR to begin (or will auto-run in 1s)...');
+      hideProgress();
+      // auto-run OCR after short delay (lets user cancel)
+      setTimeout(() => {
+        if (lastPrepared === prepared) { startOCR(); }
+      }, 900);
+    } catch (e) {
+      hideProgress();
+      setStatus('Image preparation failed: ' + (e.message || e), false);
+      log('downscale error: ' + e);
+    }
   });
 
-  // crop hint
-  document.getElementById('cropHint').addEventListener('click', ()=> {
-    alert('Crop to include only the table columns (Test, Result, Mean, SD) and avoid app sidebars or dark borders. This improves OCR accuracy.');
+  // start button & manual OCR
+  async function startOCR() {
+    if (!lastPrepared) { setStatus('No image selected. Please choose an image first.', false); return; }
+    setStatus('Running OCR — this may take 10–60s depending on device');
+    showProgress(0.05);
+    await doOCR(lastPrepared.blob);
+  }
+  startBtn.addEventListener('click', startOCR);
+
+  // cleanup on page unload
+  window.addEventListener('beforeunload', async () => {
+    try { await worker.terminate(); } catch(e) {/*ignore*/}
   });
 
-  // graceful cleanup on unload
-  window.addEventListener('beforeunload', async ()=> {
-    try { await worker.terminate(); } catch(e){/*ignore*/ }
-  });
+  // helper: show/hide progress
+  function showProgress(p){ prog.style.display='block'; progFill.style.width = String(Math.round((p||0)*100)) + '%'; }
+  function hideProgress(){ prog.style.display='none'; progFill.style.width='0%'; }
+
+  // initial status
+  setStatus('Ready. Please upload a QC image.');
 })();
 </script>
 </body>
