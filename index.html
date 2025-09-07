@@ -2,11 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>QC Analyzer — Robust Client-side OCR</title>
+  <title>QC Analyzer — Robust Client-side OCR (fixed)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!-- Tesseract.js (core CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
+
   <style>
-    :root{--bg:#f7f9fc;--card:#fff;--muted:#6b7280;--accent:#0366d6;--danger:#c02616;--success:#0f766e;--radius:12px}
+    :root{--bg:#f7f9fc;--card:#fff;--muted:#6b7280;--accent:#0366d6;--danger:#c02616;--radius:12px}
     body{background:var(--bg);margin:0;padding:14px;font-family:Inter,system-ui,Roboto,Arial;color:#111}
     .container{max-width:980px;margin:0 auto}
     .card{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 6px 18px rgba(12,38,63,0.06);margin-bottom:12px}
@@ -23,13 +25,12 @@
     .progress > span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#5aa0ff);width:0%}
     pre.debug{background:#0b1220;color:#e6f0ff;padding:8px;border-radius:8px;max-height:180px;overflow:auto;font-size:0.8rem}
     button.primary{background:var(--accent);color:#fff;border:none;padding:8px 10px;border-radius:8px;cursor:pointer}
-    button.ghost{background:#fff;border:1px solid #ddd;padding:8px 10px;border-radius:8px;cursor:pointer}
   </style>
 </head>
 <body>
   <div class="container">
     <div class="card">
-      <h1>AI QC Analyzer — Robust OCR</h1>
+      <h1>AI QC Analyzer — Robust OCR (fixed)</h1>
       <div class="hint">Upload a clear screenshot of the QC table (Test / Result / Mean / SD). OCR runs in your browser — nothing is uploaded.</div>
 
       <div style="margin-top:12px" class="row">
@@ -40,7 +41,7 @@
 
       <div class="hint">Tip: crop to just the table numeric columns for best results. If OCR doesn't start automatically, tap <em>Start OCR</em>.</div>
 
-      <div id="status" class="status small">Initializing OCR engine — please wait…</div>
+      <div id="status" class="status small">Initializing...</div>
       <div class="progress" id="prog" style="display:none"><span id="progFill"></span></div>
 
       <div id="preview" class="preview" style="display:none"></div>
@@ -65,7 +66,7 @@
 
 <script>
 (async () => {
-  // UI refs
+  // DOM refs
   const fileInput = document.getElementById('fileinput');
   const preview = document.getElementById('preview');
   const status = document.getElementById('status');
@@ -76,42 +77,27 @@
   const logBox = document.getElementById('log');
   const startBtn = document.getElementById('startBtn');
 
-  // logging helpers
   function log(s) { console.log(s); logBox.textContent = (new Date()).toLocaleTimeString() + " — " + s + "\n" + logBox.textContent; }
   function setStatus(s){ status.textContent = s; log(s); }
-  function showProgressValue(p){ prog.style.display='block'; progFill.style.width = Math.round(p*100)+'%'; }
-  function hideProgress(){ prog.style.display='none'; progFill.style.width = '0%'; }
+  function showProgress(p){ prog.style.display='block'; progFill.style.width = Math.round(p*100)+'%'; }
+  function hideProgress(){ prog.style.display='none'; progFill.style.width='0%'; }
 
-  // create worker with langPath CDN to avoid fetch issues
-  const worker = Tesseract.createWorker({
-    logger: m => {
-      if (m && m.status) {
-        const pct = m.progress ? Math.round(m.progress*100) : '';
-        setStatus(`${m.status}${pct ? ' — ' + pct + '%' : ''}`);
-        if (typeof m.progress === 'number') showProgressValue(m.progress);
-      }
-    },
-    langPath: 'https://tessdata.projectnaptha.com/4.0.0'
-  });
+  // We'll use the simple Tesseract.recognize API and point langPath to CDN
+  const TESS_LANG_PATH = 'https://tessdata.projectnaptha.com/4.0.0';
 
-  // initialize worker
-  try {
-    setStatus('Loading OCR engine (this may take a few seconds)...');
-    log('worker.load()');
-    await worker.load();
-    log('worker.loadLanguage(eng)');
-    await worker.loadLanguage('eng');
-    log('worker.initialize(eng)');
-    await worker.initialize('eng');
-    setStatus('OCR ready. Upload an image or press Start OCR after selecting one.');
-  } catch (e) {
-    setStatus('OCR init failed: ' + (e.message || e));
-    log('OCR init error: ' + e);
+  // initialization: test that Tesseract.recognize exists
+  if (!Tesseract || typeof Tesseract.recognize !== 'function') {
+    setStatus('Tesseract.js not available or incompatible. Try Chrome browser.', false);
+    log('Tesseract.recognize missing. Loaded object: ' + (typeof Tesseract));
+    return;
+  } else {
+    setStatus('Tesseract ready (will fetch models on demand).');
+    log('Tesseract.recognize ready');
   }
 
-  // downscale large images for mobile
+  // downscale large images for mobile devices
   async function downscaleImage(file, maxDim=1200){
-    return new Promise((res, rej) => {
+    return new Promise((resolve, reject) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
       img.onload = () => {
@@ -124,18 +110,15 @@
         ctx.drawImage(img, 0, 0, w, h);
         canvas.toBlob(blob => {
           URL.revokeObjectURL(url);
-          res({blob, previewImg: canvas.toDataURL('image/jpeg', 0.85)});
+          resolve({blob, previewImg: canvas.toDataURL('image/jpeg', 0.85)});
         }, 'image/jpeg', 0.85);
       };
-      img.onerror = (err) => {
-        URL.revokeObjectURL(url);
-        rej(err);
-      };
+      img.onerror = (err) => { URL.revokeObjectURL(url); reject(err); };
       img.src = url;
     });
   }
 
-  // parse OCR text heuristically into rows
+  // parse OCR text into rows
   function parseTextToRows(raw) {
     if (!raw) return [];
     const lines = raw.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
@@ -180,6 +163,7 @@
     html += `</tbody></table><div style="margin-top:8px" class="small">Raw OCR sample: ${escapeHtml(rawText.slice(0,400))}</div>`;
     resultArea.innerHTML = html;
   }
+
   function renderFindings(flags) {
     if (!flags.length) { findings.innerHTML = '<div style="color:green;font-weight:700">No Westgard violations detected.</div>'; return; }
     let html = '<ul style="padding-left:18px;margin:0">';
@@ -190,26 +174,35 @@
     html += '</ul>';
     findings.innerHTML = html;
   }
+
   function escapeHtml(s){ return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-  // ----- CORRECTED doOCR(): use worker.recognize(...) properly -----
-  async function doOCR(blobOrImage) {
+  // ---- OCR using Tesseract.recognize (no worker API) ----
+  async function doOCR_usingRecognize(source) {
     try {
-      setStatus('Starting OCR (recognition)…');
-      showProgressValue(0.02);
+      setStatus('Starting OCR (recognize)...');
+      showProgress(0.02);
 
-      // CORRECT worker API usage:
-      const { data } = await worker.recognize(blobOrImage);
+      // Tesseract.recognize accepts image (blob/dataURL) + lang + options
+      const options = {
+        langPath: TESS_LANG_PATH,
+        logger: m => {
+          if (m && m.status) {
+            const pct = m.progress ? Math.round(m.progress*100) : '';
+            setStatus(`${m.status}${pct ? ' — ' + pct + '%' : ''}`);
+            if (typeof m.progress === 'number') showProgress(m.progress);
+          }
+        }
+      };
 
-      showProgressValue(1);
+      const result = await Tesseract.recognize(source, 'eng', options);
       hideProgress();
       setStatus('OCR complete — parsing text');
 
-      const raw = data.text || '';
+      const raw = result.data ? result.data.text : (result.text || '');
       const rows = parseTextToRows(raw);
       renderRows(rows, raw);
       renderFindings(applyWestgard(rows));
-
     } catch (err) {
       hideProgress();
       setStatus('OCR failed: ' + (err.message || err), false);
@@ -219,13 +212,13 @@
     }
   }
 
-  // file handling / auto-run OCR
+  // file handling & downscaling
   let lastPrepared = null;
   fileInput.addEventListener('change', async (evt) => {
     const f = evt.target.files && evt.target.files[0];
     if (!f) return;
     setStatus('Image selected. Preparing (downscaling) — please wait');
-    showProgressValue(0.02);
+    showProgress(0.02);
     try {
       const prepared = await downscaleImage(f, 1200);
       lastPrepared = prepared;
@@ -243,25 +236,42 @@
     }
   });
 
+  // downscale helper
+  async function downscaleImage(file, maxDim=1200){
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        let {width:w, height:h} = img;
+        let scale = Math.min(1, maxDim / Math.max(w,h));
+        if (scale < 1) { w = Math.round(w*scale); h = Math.round(h*scale); }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(blob => {
+          URL.revokeObjectURL(url);
+          resolve({blob, previewImg: canvas.toDataURL('image/jpeg', 0.85)});
+        }, 'image/jpeg', 0.85);
+      };
+      img.onerror = (err) => { URL.revokeObjectURL(url); reject(err); };
+      img.src = url;
+    });
+  }
+
   async function startOCR() {
     if (!lastPrepared) { setStatus('No image selected. Please choose an image first.', false); return; }
     setStatus('Running OCR — this may take 10–60s depending on device');
-    showProgressValue(0.05);
-    await doOCR(lastPrepared.blob);
+    showProgress(0.05);
+
+    // Use the preview DataURL (works in all browsers) to avoid blob issues
+    await doOCR_usingRecognize(lastPrepared.previewImg);
   }
   startBtn.addEventListener('click', startOCR);
 
-  // cleanup on page unload
-  window.addEventListener('beforeunload', async () => {
-    try { await worker.terminate(); } catch(e) {/*ignore*/}
-  });
-
-  // helper: show/hide progress
-  function showProgressValue(p){ prog.style.display='block'; progFill.style.width = String(Math.round((p||0)*100)) + '%'; }
-  function hideProgress(){ prog.style.display='none'; progFill.style.width='0%'; }
-
   // initial status
   setStatus('Ready. Please upload a QC image.');
+
 })();
 </script>
 </body>
