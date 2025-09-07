@@ -1,688 +1,811 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>QC Analyzer — Column OCR + Dictionary Editor</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
-  <style>
-    :root{--bg:#f7f9fc;--card:#fff;--muted:#6b7280;--accent:#0366d6;--danger:#c02616;--radius:12px}
-    body{background:var(--bg);margin:0;padding:14px;font-family:Inter,system-ui,Roboto,Arial;color:#111}
-    .container{max-width:980px;margin:0 auto}
-    .card{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 6px 18px rgba(12,38,63,0.06);margin-bottom:12px}
-    h1{margin:0;font-size:1.25rem}
-    .upload-btn{display:inline-block;padding:12px;border-radius:10px;border:2px dashed #d1d5db;background:#fff;cursor:pointer;font-weight:700;color:var(--accent)}
-    input[type=file]{display:none}
-    .hint{color:var(--muted);margin-top:8px;font-size:0.9rem}
-    .preview{margin-top:12px;border-radius:8px;overflow:hidden;border:1px solid #eee}
-    .preview img{width:100%;display:block}
-    .row{display:flex;gap:8px;align-items:center}
-    .small{font-size:0.9rem;color:var(--muted)}
-    .status{margin-top:10px;font-size:0.95rem;color:#333}
-    .progress{height:8px;background:#eef2ff;border-radius:999px;overflow:hidden;margin-top:8px}
-    .progress > span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#5aa0ff);width:0%}
-    pre.debug{background:#0b1220;color:#e6f0ff;padding:8px;border-radius:8px;max-height:200px;overflow:auto;font-size:0.8rem}
-    table{width:100%;border-collapse:collapse;margin-top:8px}
-    th,td{padding:6px;border-bottom:1px solid #f1f5f9;text-align:center;font-size:0.9rem}
-    th{background:#fbfdff;font-weight:700}
-    .flag-danger{color:#c02616;font-weight:700}
-    .flag-warning{color:#b45309;font-weight:700}
-    button.primary{background:var(--accent);color:#fff;border:none;padding:8px 10px;border-radius:8px;cursor:pointer}
-    .controls{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
-    .small-input{padding:6px;border-radius:8px;border:1px solid #ddd;font-size:0.9rem}
-    .dict-table{width:100%;border:1px solid #eee;border-radius:8px;overflow:auto}
-    .dict-table table{width:100%;border-collapse:collapse}
-    .dict-table th, .dict-table td{padding:8px;border-bottom:1px solid #f4f6f8;text-align:left}
-    .dict-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
-    .chip{display:inline-block;padding:6px 10px;border-radius:999px;background:#eef6ff;color:var(--accent);font-weight:700}
-    footer.note{margin-top:10px;color:var(--muted);font-size:0.85rem;text-align:center}
-    input.small-field{padding:6px;border-radius:6px;border:1px solid #ddd;width:100%}
-    .row-inline{display:flex;gap:8px}
-    @media (max-width:560px){ .row{flex-direction:column;align-items:stretch} .row-inline{flex-direction:column} }
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QC Analyzer — Robust OCR + Column Picker</title>
+
+<!-- Tesseract.js (browser OCR). Use CDN; if offline, replace with local build -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
+
+<style>
+:root{--bg:#f6f8fb;--card:#fff;--muted:#667085;--accent:#0b69ff;--danger:#d0342c}
+body{margin:0;background:var(--bg);font-family:Inter,system-ui,Roboto,Arial;color:#0f1724;padding:12px}
+.container{max-width:980px;margin:0 auto}
+.card{background:var(--card);padding:14px;border-radius:12px;box-shadow:0 6px 18px rgba(12,38,63,0.06);margin-bottom:12px}
+h1{font-size:1.2rem;margin:0}
+.hint{color:var(--muted);font-size:0.95rem;margin-top:6px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.upload-btn{display:inline-block;padding:10px;border-radius:10px;border:2px dashed #e6eefc;background:#fff;cursor:pointer;color:var(--accent);font-weight:700}
+.small{font-size:0.9rem;color:var(--muted)}
+.preview img{width:100%;display:block;border-radius:8px}
+.controls{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+.small-input{padding:6px;border-radius:8px;border:1px solid #e6eaf0;font-size:0.9rem}
+.progress{height:8px;background:#eef2ff;border-radius:999px;overflow:hidden;margin-top:8px}
+.progress > span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#5aa0ff);width:0%}
+.table{width:100%;border-collapse:collapse;margin-top:10px}
+.table th,.table td{padding:6px;border-bottom:1px solid #f1f5f9;text-align:center;font-size:0.9rem}
+.table th{background:#fbfdff;font-weight:700;text-align:left}
+.debug{background:#071026;color:#dff3ff;padding:8px;border-radius:8px;max-height:220px;overflow:auto;font-family:monospace;font-size:0.78rem}
+.tag{display:inline-block;padding:6px 10px;border-radius:999px;background:#eef6ff;color:var(--accent);font-weight:700}
+.btn{padding:8px 10px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer}
+.btn-plain{padding:6px 8px;border-radius:8px;border:1px solid #e6eaf0;background:#fff;cursor:pointer}
+.small-btn{padding:6px 8px;border-radius:6px;border:1px solid #e6eaf0;background:#fff;cursor:pointer}
+.flex-between{display:flex;justify-content:space-between;align-items:center}
+@media(max-width:560px){ .row{flex-direction:column;align-items:stretch} .flex-between{flex-direction:column;gap:8px} }
+</style>
 </head>
 <body>
-  <div class="container">
-    <div class="card">
-      <h1>QC Analyzer — Column OCR + Dictionary Editor</h1>
-      <div class="hint">Upload a screenshot of your QC table (Test / Result / Mean / SD). OCR runs in your browser — nothing is uploaded.</div>
+<div class="container">
+  <div class="card">
+    <h1>QC Analyzer — Robust OCR + Column Picker</h1>
+    <div class="hint">Upload a screenshot of your QC table (Test / Result / Mean / SD). OCR runs in your browser only — nothing is sent to a server.</div>
 
-      <div class="row" style="margin-top:12px;">
-        <label for="fileinput" class="upload-btn">📤 Click here to upload QC image</label>
-        <input id="fileinput" type="file" accept="image/*">
-        <button id="startBtn" class="primary" style="margin-left:auto">Start OCR</button>
-      </div>
-
-      <div class="controls">
-        <div class="small">Row tolerance(px): <input id="tol" class="small-input" type="number" value="18" min="2" style="width:80px"></div>
-        <div class="small">Contrast (0.5–2): <input id="contrast" class="small-input" type="number" value="1.0" step="0.1" min="0.5" max="3" style="width:80px"></div>
-        <div class="small">Apply threshold: <input id="thresh" type="checkbox"></div>
-        <div class="small" style="margin-left:auto">Auto-correct: <span id="dictCount" class="chip">0</span></div>
-      </div>
-
-      <div id="status" class="status small">Initializing...</div>
-      <div class="progress" id="prog" style="display:none"><span id="progFill"></span></div>
-
-      <div id="preview" class="preview" style="display:none"></div>
+    <div class="row" style="margin-top:12px">
+      <label class="upload-btn" for="fileinput">📤 Click here to upload QC image</label>
+      <input id="fileinput" type="file" accept="image/*" style="display:none">
+      <button id="startBtn" class="btn">Start OCR</button>
+      <div style="margin-left:auto" class="small">Dict entries: <span id="dictCount" class="tag">0</span></div>
     </div>
 
-    <div class="card">
-      <h3 style="margin:0 0 8px 0">Extracted table (best effort)</h3>
-      <div id="resultArea" class="small">No image processed yet.</div>
+    <div class="controls" style="margin-top:12px">
+      <div class="small">Row tol(px): <input id="tol" class="small-input" type="number" value="18" min="2" style="width:88px"></div>
+      <div class="small">Contrast: <input id="contrast" class="small-input" type="number" step="0.1" value="1.0" style="width:88px"></div>
+      <div class="small">Apply threshold: <input id="thresh" type="checkbox"></div>
+      <button id="reparse" class="small-btn">Re-parse</button>
+      <button id="fixColumnsBtn" class="small-btn">Fix columns</button>
+      <button id="exportRows" class="small-btn">Export rows</button>
     </div>
 
-    <div class="card">
-      <h3 style="margin:0 0 8px 0">Westgard findings</h3>
-      <div id="findings" class="small">No findings yet.</div>
-    </div>
-
-    <div class="card">
-      <h3 style="margin:0 0 8px 0">Dictionary Manager</h3>
-
-      <div class="dict-actions">
-        <button id="showDictBtn" class="primary">Show / Edit Dictionary</button>
-        <button id="addRowBtn" class="small-input">Add entry</button>
-        <button id="exportBtn" class="small-input">Export JSON</button>
-        <label style="display:inline-block" class="small-input">
-          Import JSON <input id="importFile" type="file" accept=".json" style="display:none">
-        </label>
-        <button id="resetBtn" class="small-input">Reset to defaults</button>
-        <div style="margin-left:auto" class="small">Changes saved to browser (localStorage). Use export to save file.</div>
-      </div>
-
-      <div id="dictContainer" class="dict-table" style="display:none;margin-top:10px">
-        <table id="dictTable">
-          <thead><tr><th style="width:38%">OCR token</th><th style="width:48%">Canonical name</th><th style="width:14%">Actions</th></tr></thead>
-          <tbody id="dictTbody"></tbody>
-        </table>
-        <div style="margin-top:8px" class="row-inline">
-          <textarea id="dictRaw" placeholder="Or paste JSON here and click Apply" style="width:100%;height:120px;border-radius:8px;padding:8px;border:1px solid #eee"></textarea>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <button id="applyJsonBtn" class="small-input">Apply JSON</button>
-          <button id="saveLocalBtn" class="small-input">Save to localStorage</button>
-          <button id="loadLocalBtn" class="small-input">Load from localStorage</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3 style="margin:0 0 8px 0">Debug / Logs</h3>
-      <pre id="log" class="debug">waiting...</pre>
-    </div>
-
-    <footer class="note">Tip: after editing the dictionary, re-run OCR on an image to immediately see changes applied.</footer>
+    <div id="status" class="small" style="margin-top:8px">Ready</div>
+    <div class="progress" id="prog" style="display:none"><span id="progFill"></span></div>
+    <div id="preview" class="preview" style="margin-top:10px;display:none"></div>
   </div>
 
+  <div class="card">
+    <div class="flex-between"><h3 style="margin:0">Extracted table (editable)</h3>
+      <div class="small">Edit any row and click Save Row. Use Add to dict to map OCR token → canonical name.</div>
+    </div>
+    <div id="resultArea" class="small" style="margin-top:8px">No data yet</div>
+    <div id="columnPickerContainer" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin:0">Preview corrections (tokens → suggestion)</h3>
+    <div class="small">Use Apply to add mapping to dictionary quickly.</div>
+    <div id="previewCorr" style="margin-top:8px" class="small"></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin:0">Raw OCR tokens & text</h3>
+    <div class="small">Check exact OCR tokens (helpful for dictionary tweaks)</div>
+    <div id="rawWords" style="margin-top:8px" class="debug">no OCR yet</div>
+    <div style="margin-top:8px"><button id="copyRaw" class="small-btn">Copy raw text</button> <button id="showRawText" class="small-btn">Show raw OCR text</button></div>
+    <div id="rawText" class="debug" style="margin-top:8px;display:none"></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin:0">Westgard findings</h3>
+    <div id="findings" class="small" style="margin-top:8px">No findings yet</div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin:0">Dictionary (quick edit)</h3>
+    <div class="small">Map OCR token → canonical analyte name. Saved to localStorage.</div>
+    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+      <input id="newKey" class="small-input" placeholder="OCR token (e.g. ALPU)">
+      <input id="newVal" class="small-input" placeholder="Canonical name (e.g. ALP)">
+      <button id="addBtn" class="small-btn">Add</button>
+      <button id="exportBtn" class="small-btn">Export JSON</button>
+      <input id="importFile" type="file" accept=".json" style="display:none">
+      <button id="importBtn" class="small-btn">Import JSON</button>
+      <button id="resetBtn" class="small-btn">Reset defaults</button>
+    </div>
+    <div id="dictTable" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin:0">Debug / Logs</h3>
+    <pre id="log" class="debug">idle</pre>
+  </div>
+</div>
+
 <script>
-(async () => {
-  // ====== Elements
-  const fileInput = document.getElementById('fileinput');
-  const preview = document.getElementById('preview');
-  const status = document.getElementById('status');
-  const prog = document.getElementById('prog');
-  const progFill = document.getElementById('progFill');
-  const resultArea = document.getElementById('resultArea');
-  const findings = document.getElementById('findings');
-  const logBox = document.getElementById('log');
-  const startBtn = document.getElementById('startBtn');
-  const tolInput = document.getElementById('tol');
-  const contrastInput = document.getElementById('contrast');
-  const threshCheckbox = document.getElementById('thresh');
-  const dictCountChip = document.getElementById('dictCount');
+/* ================= State + helpers ================= */
+const fileInput = document.getElementById('fileinput');
+const previewEl = document.getElementById('preview');
+const status = document.getElementById('status');
+const prog = document.getElementById('prog');
+const progFill = document.getElementById('progFill');
+const startBtn = document.getElementById('startBtn');
+const tolInput = document.getElementById('tol');
+const contrastInput = document.getElementById('contrast');
+const threshCheckbox = document.getElementById('thresh');
+const resultArea = document.getElementById('resultArea');
+const findings = document.getElementById('findings');
+const logBox = document.getElementById('log');
+const previewCorr = document.getElementById('previewCorr');
+const rawWords = document.getElementById('rawWords');
+const rawText = document.getElementById('rawText');
+const showRawText = document.getElementById('showRawText');
+const copyRawBtn = document.getElementById('copyRaw');
+const dictTable = document.getElementById('dictTable');
+const dictCount = document.getElementById('dictCount');
+const newKey = document.getElementById('newKey');
+const newVal = document.getElementById('newVal');
+const addBtn = document.getElementById('addBtn');
+const exportBtn = document.getElementById('exportBtn');
+const importBtn = document.getElementById('importBtn');
+const importFile = document.getElementById('importFile');
+const resetBtn = document.getElementById('resetBtn');
+const reparseBtn = document.getElementById('reparse');
+const fixColumnsBtn = document.getElementById('fixColumnsBtn');
+const exportRows = document.getElementById('exportRows');
+const columnPickerContainer = document.getElementById('columnPickerContainer');
 
-  // dictionary UI
-  const showDictBtn = document.getElementById('showDictBtn');
-  const dictContainer = document.getElementById('dictContainer');
-  const dictTbody = document.getElementById('dictTbody');
-  const dictRaw = document.getElementById('dictRaw');
-  const addRowBtn = document.getElementById('addRowBtn');
-  const exportBtn = document.getElementById('exportBtn');
-  const importFile = document.getElementById('importFile');
-  const applyJsonBtn = document.getElementById('applyJsonBtn');
-  const saveLocalBtn = document.getElementById('saveLocalBtn');
-  const loadLocalBtn = document.getElementById('loadLocalBtn');
-  const resetBtn = document.getElementById('resetBtn');
+const TESS_LANG_PATH = 'https://tessdata.projectnaptha.com/4.0.0';
+const LOCAL_KEY = 'qc_dict_v2';
 
-  const TESS_LANG_PATH = 'https://tessdata.projectnaptha.com/4.0.0';
-  const LOCAL_KEY = 'qc_analyzer_dictionary_v1';
+function log(s){ logBox.textContent = (new Date()).toLocaleTimeString() + ' — ' + s + '\n' + logBox.textContent; console.log(s); }
+function setStatus(s){ status.textContent = s; log(s); }
+function showProgress(p){ prog.style.display='block'; progFill.style.width = Math.round(p*100)+'%'; }
+function hideProgress(){ prog.style.display='none'; progFill.style.width='0%'; }
 
-  function log(s){ console.log(s); logBox.textContent = (new Date()).toLocaleTimeString() + " — " + s + "\n" + logBox.textContent; }
-  function setStatus(s){ status.textContent = s; log(s); }
-  function showProgress(p){ prog.style.display='block'; progFill.style.width = Math.round(p*100)+'%'; }
-  function hideProgress(){ prog.style.display='none'; progFill.style.width='0%'; }
+const defaultDict = {
+  'SGPTD':'SGPT','SGOTD':'SGOT','ALPU':'ALP','AMY':'AMY','LIP':'LIP','PHOS':'PHOS',
+  'BIDD':'BILIRUBIN','BIT':'BILIRUBIN','UREA':'UREA','CRENZ':'CREATININE','GLU':'GLUCOSE',
+  'TRIG':'TRIGLYCERIDES','HDLC':'HDL-C','UA':'URIC ACID','CA':'CALCIUM','ALBD':'ALBUMIN',
+  'PRO':'PROTEIN','CHOLO':'CHOLESTEROL','LDHO':'LDH'
+};
 
-  // ====== Default dictionary (starter)
-  const defaultDict = {
-    'SGPTD': 'SGPT', 'SGOTD': 'SGOT', 'ALPU': 'ALP', 'AMY': 'AMY', 'LIP': 'LIP',
-    'PHOS': 'PHOS', 'BIDD': 'BILIRUBIN', 'BIT': 'BILIRUBIN', 'UREA': 'UREA', 'CRENZ': 'CREATININE',
-    'GLU': 'GLUCOSE', 'TRIG': 'TRIGLYCERIDES', 'HDLC': 'HDL-C', 'UA': 'URIC ACID', 'CA': 'CALCIUM',
-    'ALBD': 'ALBUMIN', 'PRO': 'PROTEIN', 'CHOLO': 'CHOLESTEROL', 'LDHO': 'LDH'
+let correctionDict = {};
+let lastPrepared = null; // {blob, previewDataURL}
+let lastParse = {parsed:[], rawText:'', words:[], colXs:[]};
+window._manuallySelectedCols = null; // user-chosen mapping if any
+
+function normalizeKey(s){ if(!s) return ''; return s.toString().toUpperCase().replace(/[^\w\s\/\-]/g,'').replace(/\s+/g,' ').trim(); }
+function loadDict(){
+  try{
+    const raw = localStorage.getItem(LOCAL_KEY);
+    if(raw){ correctionDict = JSON.parse(raw); log('Loaded dict from localStorage'); return; }
+  }catch(e){ log('loadDict error: '+e) }
+  correctionDict = {};
+  for(const k of Object.keys(defaultDict)) correctionDict[normalizeKey(k)] = defaultDict[k];
+  log('Loaded default dict');
+}
+function saveDict(){ localStorage.setItem(LOCAL_KEY, JSON.stringify(correctionDict)); log('Saved dict to localStorage'); }
+function updateDictUI(){
+  dictCount.textContent = Object.keys(correctionDict).length;
+  const keys = Object.keys(correctionDict).sort();
+  let html = '<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#fbfdff"><th style="text-align:left;padding:6px">OCR token</th><th style="text-align:left;padding:6px">Canonical</th><th style="padding:6px">Actions</th></tr></thead><tbody>';
+  for(const k of keys){
+    html += `<tr><td style="padding:6px">${k}</td><td style="padding:6px">${correctionDict[k]}</td><td style="padding:6px"><button class="small-btn" data-k="${k}" data-action="del">Delete</button></td></tr>`;
+  }
+  html += '</tbody></table>';
+  dictTable.innerHTML = html;
+  dictTable.querySelectorAll('button[data-action="del"]').forEach(b=>{
+    b.addEventListener('click', ()=>{ const k = b.dataset.k; if(confirm('Delete '+k+'?')){ delete correctionDict[k]; updateDictUI(); saveDict(); setStatus('Deleted '+k); }});
+  });
+}
+addBtn.addEventListener('click', ()=>{
+  const k = normalizeKey(newKey.value);
+  const v = newVal.value.trim();
+  if(!k || !v) return alert('Both fields required');
+  correctionDict[k] = v; updateDictUI(); saveDict(); setStatus('Added '+k+' → '+v); newKey.value=''; newVal.value='';
+});
+exportBtn.addEventListener('click', ()=>{ const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(correctionDict, null, 2)); const a=document.createElement('a'); a.href=dataStr; a.download='qc_dict.json'; document.body.appendChild(a); a.click(); a.remove(); });
+importBtn.addEventListener('click', ()=> importFile.click());
+importFile.addEventListener('change', e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader(); r.onload = () => {
+    try {
+      const parsed = JSON.parse(r.result);
+      for(const k of Object.keys(parsed)) correctionDict[normalizeKey(k)] = parsed[k];
+      updateDictUI(); saveDict(); setStatus('Imported dict file');
+    } catch(err){ alert('Invalid JSON') }
+  }; r.readAsText(f);
+});
+resetBtn.addEventListener('click', ()=>{ if(!confirm('Reset to defaults?')) return; correctionDict={}; for(const k of Object.keys(defaultDict)) correctionDict[normalizeKey(k)] = defaultDict[k]; updateDictUI(); saveDict(); setStatus('Reset to defaults'); });
+
+/* ================= improved number normalization ================= */
+function normalizeNumberString(s){
+  if(s == null) return '';
+  let t = String(s);
+  // Replace various separators/dashes and common OCR substitutions
+  t = t.replace(/[\u2018\u2019`´]/g,"'");         // weird quotes
+  t = t.replace(/[٬,⁄]/g, '.');                   // comma or fraction slash -> dot
+  // O before digit likely zero
+  t = t.replace(/O(?=\d)/g,'0');
+  // I or l used in place of 1 (between digits or trailing)
+  t = t.replace(/(?<=\d)[Il](?=\D|$)/g,'1');
+  // Remove any currency/units etc
+  t = t.replace(/[^\d\.\-eE+]/g,'');
+  t = t.replace(/^\.*/,'');
+  t = t.replace(/\.{2,}/g,'.');
+  // remove leading plus if any
+  t = t.replace(/^\+/, '');
+  return t;
+}
+function tryParseNumber(s){
+  const t = normalizeNumberString(s);
+  if(t === '') return null;
+  const n = Number(t);
+  if(Number.isFinite(n)) return n;
+  return null;
+}
+
+/* ================= fuzzy matching for tokens ================= */
+function levenshtein(a,b){
+  if(a===b) return 0; a=a||''; b=b||'';
+  const m=a.length, n=b.length;
+  if(m===0) return n; if(n===0) return m;
+  const dp = Array.from({length:m+1},()=>new Array(n+1));
+  for(let i=0;i<=m;i++) dp[i][0]=i;
+  for(let j=0;j<=n;j++) dp[0][j]=j;
+  for(let i=1;i<=m;i++){
+    for(let j=1;j<=n;j++){
+      const cost = a[i-1]===b[j-1]?0:1;
+      dp[i][j] = Math.min(dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1]+cost);
+    }
+  }
+  return dp[m][n];
+}
+function bestFuzzyMatch(token){
+  const keys = Object.keys(correctionDict);
+  if(!keys.length) return null;
+  let best = null;
+  for(const k of keys){
+    const d = levenshtein(token, k);
+    const norm = d / Math.max(1, Math.max(token.length, k.length));
+    if(best===null || norm < best.norm){ best = {key:k,value:correctionDict[k],dist:d,norm}; }
+  }
+  if(best && best.norm <= 0.35) return best;
+  return null;
+}
+
+/* ================= parsing helpers (rows/columns) ================= */
+function normalizeName(s){
+  if(!s) return '';
+  let t = s.toString();
+  t = t.replace(/[.,;:|_*"“”'`~(){}\[\]]+/g,'');
+  t = t.replace(/\s+/g,' ').trim();
+  t = t.toUpperCase();
+  if(/[A-Z]/.test(t) && /0/.test(t)) t = t.replace(/0/g,'O');
+  t = t.replace(/[^A-Z0-9\s\/\-\.%]/g,'');
+  return t;
+}
+function normalizeAndCorrectTestName(raw){
+  if(!raw) return '';
+  let s = normalizeName(raw);
+  const nk = normalizeKey(s);
+  if(correctionDict[nk]) return correctionDict[nk];
+  s = s.replace(/\b(MG\/DL|MGDL|G\/DL|U\/L|UL|MMOL|UG\/ML)\b/g,'').trim();
+  if(correctionDict[normalizeKey(s)]) return correctionDict[normalizeKey(s)];
+  const tokens = s.split(/\s+/).filter(Boolean);
+  if(tokens.length){
+    if(correctionDict[normalizeKey(tokens[0])]) return correctionDict[normalizeKey(tokens[0])];
+  }
+  const fuzzy = bestFuzzyMatch(nk);
+  if(fuzzy) return fuzzy.value;
+  if(/^[A-Z]{2,6}$/.test(s)) return s;
+  return s.split(/\s+/).slice(0,3).join(' ');
+}
+
+function wordsToRows(words,tolerance=18){
+  const entries = words.map(w=>{
+    const bbox = w.bbox || {x0:w.x0,y0:w.y0,x1:w.x1,y1:w.y1};
+    const ycenter=(bbox.y0+bbox.y1)/2, xcenter=(bbox.x0+bbox.x1)/2;
+    return {text:w.text,ycenter,xcenter,bbox};
+  }).filter(e=>e.text && e.text.trim().length>0);
+  entries.sort((a,b)=>a.ycenter-b.ycenter);
+  const rows=[];
+  for(const e of entries){
+    let placed=false;
+    for(const r of rows){
+      const dy = Math.abs(e.ycenter - r.meanY);
+      if(dy <= tolerance){ r.items.push(e); r.meanY = (r.meanY*(r.items.length-1)+e.ycenter)/r.items.length; placed=true; break;}
+    }
+    if(!placed) rows.push({meanY:e.ycenter, items:[e]});
+  }
+  return rows.map(r=>r.items.sort((a,b)=>a.xcenter-b.xcenter));
+}
+
+function detectColumnsFromRows(rows,bucketPixels=30){
+  const xs=[];
+  for(const r of rows) for(const w of r) xs.push(w.xcenter);
+  if(!xs.length) return [];
+  const minX=Math.min(...xs), maxX=Math.max(...xs);
+  const buckets = Math.max(8, Math.ceil((maxX-minX)/bucketPixels));
+  const counts = new Array(buckets).fill(0), sums = new Array(buckets).fill(0);
+  for(const x of xs){
+    const i = Math.min(buckets-1, Math.floor((x-minX)/(maxX-minX+1e-9)*buckets));
+    counts[i]++; sums[i]+=x;
+  }
+  const peaks=[];
+  for(let i=0;i<buckets;i++){
+    const left=(i>0?counts[i-1]:0), right=(i<buckets-1?counts[i+1]:0);
+    if(counts[i]>=left && counts[i]>=right && counts[i]>2){ peaks.push({bucket:i, count:counts[i], x:sums[i]/counts[i]}); }
+  }
+  peaks.sort((a,b)=>a.x-b.x);
+  const merged=[];
+  for(const p of peaks){
+    if(!merged.length) merged.push(p);
+    else {
+      const last = merged[merged.length-1];
+      if(Math.abs(p.x-last.x) < bucketPixels*0.9){
+        last.x = (last.x*last.count + p.x*p.count)/(last.count+p.count);
+        last.count += p.count;
+      } else merged.push(p);
+    }
+  }
+  return merged.map(m=>m.x);
+}
+
+/* ================= improved numeric detection ================= */
+function detectNumericColumns(assignedRows){
+  const cols = assignedRows[0] ? assignedRows[0].length : 0;
+  const totalRows = assignedRows.length || 1;
+  const score = new Array(cols).fill(0);
+  const decimalScore = new Array(cols).fill(0);
+  const magnitudeStats = new Array(cols).fill(null).map(()=>({count:0,sum:0,max:-Infinity,min:Infinity}));
+  for(const r of assignedRows){
+    for(let i=0;i<cols;i++){
+      const s = (r[i]||'').trim();
+      if(!s) continue;
+      const maybeNums = s.match(/[-0-9\.,OIlEe\+]+/g);
+      if(!maybeNums) continue;
+      let numericPieces = 0;
+      for(const piece of maybeNums){
+        const norm = normalizeNumberString(piece);
+        if(norm && /[0-9]/.test(norm)){
+          const parsed = tryParseNumber(norm);
+          if(parsed !== null){
+            numericPieces += 1;
+            magnitudeStats[i].count += 1;
+            magnitudeStats[i].sum += Math.abs(parsed);
+            if(parsed > magnitudeStats[i].max) magnitudeStats[i].max = parsed;
+            if(parsed < magnitudeStats[i].min) magnitudeStats[i].min = parsed;
+            if(/\.\d+/.test(norm)) decimalScore[i] += 1;
+          } else {
+            if(/\./.test(norm)) decimalScore[i] += 0.6;
+          }
+        }
+      }
+      if(numericPieces>0) score[i] += 1;
+    }
+  }
+  const numericFriend = score.map((c,i) => {
+    const decBonus = Math.min(1, decimalScore[i] / Math.max(1, totalRows));
+    const freq = c / Math.max(1, totalRows);
+    return {i, score: freq * (0.6 + 0.4 * decBonus), freq, decBonus,
+            avgMag: magnitudeStats[i].count ? magnitudeStats[i].sum / magnitudeStats[i].count : 0,
+            minMag: magnitudeStats[i].min === Infinity ? 0 : magnitudeStats[i].min,
+            maxMag: magnitudeStats[i].max === -Infinity ? 0 : magnitudeStats[i].max};
+  });
+  numericFriend.sort((a,b)=>b.score - a.score);
+  return numericFriend;
+}
+
+/* ================= choose numeric columns & column picker UI ================= */
+function chooseNumericColumns(colXs, assigned){
+  const numericInfo = detectNumericColumns(assigned);
+  const candidateCols = numericInfo.map(x=>x.i);
+  function looksLikeCurve(idx){
+    const info = numericInfo.find(x=>x.i===idx);
+    if(!info) return false;
+    if(info.avgMag > 10000 && info.freq > 0.7) return true;
+    if(info.minMag >= 1e4 && info.freq > 0.6) return true;
+    return false;
+  }
+  const filtered = numericInfo.filter(info => !looksLikeCurve(info.i));
+  const chosen = [];
+  if(filtered.length >= 3){
+    chosen.push(filtered[0].i, filtered[1].i, filtered[2].i);
+  } else {
+    for(const it of numericInfo){ if(!chosen.includes(it.i)) chosen.push(it.i); if(chosen.length>=3) break; }
+  }
+  chosen.sort((a,b)=>colXs[a]-colXs[b]);
+  const numericSet = new Set(chosen);
+  let testCol = null;
+  const nonNumericCandidates = numericInfo.slice().reverse().filter(x => x.freq < 0.4).map(x => x.i);
+  if(nonNumericCandidates.length) testCol = nonNumericCandidates[0];
+  if(testCol===null){
+    const leftOfFirst = Math.max(0, chosen[0]-1);
+    testCol = leftOfFirst;
+  }
+  return {testCol, resultIdx: chosen[0]||0, meanIdx: chosen[1]||1, sdIdx: chosen[2]||2, numericInfo};
+}
+
+function renderColumnPicker(colXs, chosen){
+  columnPickerContainer.innerHTML = '';
+  if(!colXs || !colXs.length) return;
+  const labels = colXs.map((x,i)=>`Col ${i} (x=${Math.round(x)})`);
+  const makeSelect = (id, selectedIdx) => {
+    const sel = document.createElement('select'); sel.id = id; sel.style.marginRight='8px';
+    labels.forEach((lab,j) => { const opt=document.createElement('option'); opt.value=j; opt.text=lab; if(j===selectedIdx) opt.selected=true; sel.appendChild(opt); });
+    return sel;
   };
+  const selTest = makeSelect('selTest', chosen.testCol);
+  const selRes = makeSelect('selRes', chosen.resultIdx);
+  const selMean = makeSelect('selMean', chosen.meanIdx);
+  const selSd = makeSelect('selSd', chosen.sdIdx);
+  const applyB = document.createElement('button'); applyB.textContent = 'Apply columns'; applyB.className='small-btn';
+  applyB.onclick = ()=>{
+    const resI = parseInt(document.getElementById('selRes').value);
+    const meanI = parseInt(document.getElementById('selMean').value);
+    const sdI = parseInt(document.getElementById('selSd').value);
+    const testI = parseInt(document.getElementById('selTest').value);
+    window._manuallySelectedCols = {resultIndex:resI, meanIndex:meanI, sdIndex:sdI, testCol:testI};
+    setStatus('Manual columns applied. Re-parsing...');
+    doParseWithMapping();
+  };
+  const wrapper = document.createElement('div'); wrapper.style.display='flex'; wrapper.style.gap='8px'; wrapper.style.alignItems='center'; wrapper.style.flexWrap='wrap';
+  wrapper.appendChild(selTest); wrapper.appendChild(selRes); wrapper.appendChild(selMean); wrapper.appendChild(selSd); wrapper.appendChild(applyB);
+  columnPickerContainer.appendChild(wrapper);
+}
 
-  // dictionary in-memory (normalized keys)
-  let correctionDict = {};
-
-  // helper: normalize key -> uppercase, remove punctuation and extra spaces
-  function normalizeKey(s){
-    if(!s) return '';
-    return s.toString().toUpperCase().replace(/[^\w\s\/\-]/g,'').replace(/\s+/g,' ').trim();
+/* ================= salvage sd heuristic ================= */
+function salvageSd(mean, sd){
+  if(sd==null || mean==null) return sd;
+  if(sd === 0) return sd;
+  let s = sd;
+  if(mean>0 && s > mean){
+    for(let i=0;i<4;i++){
+      s = s / 10;
+      if(s <= Math.max(1, mean/2)) return s;
+    }
   }
+  return sd;
+}
 
-  // load default or local
-  function loadDictFromLocalOrDefault(){
-    try {
-      const raw = localStorage.getItem(LOCAL_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        correctionDict = {};
-        for (const k of Object.keys(parsed)) correctionDict[normalizeKey(k)] = parsed[k];
-        log('Loaded dictionary from localStorage ('+Object.keys(correctionDict).length+' entries)');
-        return;
+/* ================= assemble parsed rows using auto mapping or manual mapping ================= */
+function assignWordsToColumns(rows, colXs){
+  const assignedRows = rows.map(r=>{
+    const cells = colXs.map(()=>[]);
+    for(const w of r){
+      let best = 0, bestDist = Math.abs(w.xcenter - colXs[0]);
+      for(let i=1;i<colXs.length;i++){
+        const d = Math.abs(w.xcenter - colXs[i]);
+        if(d < bestDist){ bestDist = d; best = i; }
       }
-    } catch(e){
-      log('Failed loading local dict: ' + e);
+      cells[best].push(w.text);
     }
-    // fallback default
-    correctionDict = {};
-    for (const k of Object.keys(defaultDict)) correctionDict[normalizeKey(k)] = defaultDict[k];
-    log('Loaded default dictionary ('+Object.keys(correctionDict).length+' entries)');
-  }
-
-  // save to localStorage
-  function saveDictToLocal(){
-    try {
-      localStorage.setItem(LOCAL_KEY, JSON.stringify(correctionDict, null, 2));
-      log('Saved dictionary to localStorage.');
-    } catch(e) {
-      log('Failed to save dict: '+ e);
-    }
-  }
-
-  // UI: render table rows for dict
-  function renderDictTable(){
-    dictTbody.innerHTML = '';
-    const keys = Object.keys(correctionDict).sort();
-    for (const k of keys) {
-      const tr = document.createElement('tr');
-      const tdKey = document.createElement('td');
-      const tdVal = document.createElement('td');
-      const tdAct = document.createElement('td');
-
-      const inKey = document.createElement('input'); inKey.className='small-field'; inKey.value = k;
-      const inVal = document.createElement('input'); inVal.className='small-field'; inVal.value = correctionDict[k];
-
-      const saveBtn = document.createElement('button'); saveBtn.textContent = 'Save'; saveBtn.className='small-input';
-      const delBtn = document.createElement('button'); delBtn.textContent = 'Delete'; delBtn.className='small-input';
-
-      saveBtn.onclick = () => {
-        const nk = normalizeKey(inKey.value);
-        if (!nk) return alert('Key required');
-        // remove old key if changed
-        if (nk !== k) delete correctionDict[k];
-        correctionDict[nk] = inVal.value.trim() || inVal.value;
-        renderDictTable();
-        updateDictCount();
-        saveDictToLocal();
-        setStatus('Dictionary entry saved.');
-      };
-      delBtn.onclick = () => {
-        if (!confirm('Delete this entry?')) return;
-        delete correctionDict[k];
-        renderDictTable();
-        updateDictCount();
-        saveDictToLocal();
-        setStatus('Entry deleted.');
-      };
-
-      tdKey.appendChild(inKey);
-      tdVal.appendChild(inVal);
-      tdAct.appendChild(saveBtn); tdAct.appendChild(delBtn);
-
-      tr.appendChild(tdKey); tr.appendChild(tdVal); tr.appendChild(tdAct);
-      dictTbody.appendChild(tr);
-    }
-    dictRaw.value = JSON.stringify(correctionDict, null, 2);
-  }
-
-  function updateDictCount(){
-    dictCountChip.textContent = Object.keys(correctionDict).length;
-  }
-
-  // Add new blank entry
-  addRowBtn.addEventListener('click', ()=>{
-    const suggestedKey = 'NEW';
-    let k = suggestedKey;
-    // find unique
-    let i=1; while (correctionDict[normalizeKey(k)]) { k = suggestedKey + i; i++; }
-    correctionDict[normalizeKey(k)] = 'REPLACEMENT';
-    renderDictTable(); updateDictCount(); saveDictToLocal();
+    return cells.map(c=>c.join(' ').trim());
   });
+  return assignedRows;
+}
 
-  // Export JSON
-  exportBtn.addEventListener('click', ()=>{
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(correctionDict, null, 2));
-    const a = document.createElement('a'); a.setAttribute('href', dataStr); a.setAttribute('download', 'qc_dictionary.json'); document.body.appendChild(a); a.click(); a.remove();
-  });
-
-  // Import JSON file
-  importFile.addEventListener('change', (ev)=>{
-    const f = ev.target.files && ev.target.files[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const parsed = JSON.parse(e.target.result);
-        // normalize keys and merge
-        for (const k of Object.keys(parsed)) correctionDict[normalizeKey(k)] = parsed[k];
-        renderDictTable(); updateDictCount(); saveDictToLocal();
-        setStatus('Imported dictionary file.');
-      } catch(e){ alert('Invalid JSON file'); }
-    };
-    reader.readAsText(f);
-  });
-
-  // Apply JSON from textarea
-  applyJsonBtn.addEventListener('click', ()=>{
-    const t = dictRaw.value.trim();
-    if (!t) return alert('Paste or load JSON first');
-    try {
-      const parsed = JSON.parse(t);
-      correctionDict = {};
-      for (const k of Object.keys(parsed)) correctionDict[normalizeKey(k)] = parsed[k];
-      renderDictTable(); updateDictCount(); saveDictToLocal();
-      setStatus('Applied JSON to dictionary.');
-    } catch(e){ alert('Invalid JSON: ' + e); }
-  });
-
-  saveLocalBtn.addEventListener('click', ()=>{ saveDictToLocal(); setStatus('Saved dictionary to localStorage.'); });
-  loadLocalBtn.addEventListener('click', ()=>{ loadDictFromLocalOrDefault(); renderDictTable(); updateDictCount(); setStatus('Loaded dictionary from localStorage or default.'); });
-  resetBtn.addEventListener('click', ()=>{ if(!confirm('Reset dictionary to built-in defaults?')) return; correctionDict = {}; for (const k of Object.keys(defaultDict)) correctionDict[normalizeKey(k)] = defaultDict[k]; renderDictTable(); updateDictCount(); saveDictToLocal(); setStatus('Dictionary reset to defaults.'); });
-
-  showDictBtn.addEventListener('click', ()=>{
-    dictContainer.style.display = dictContainer.style.display === 'none' ? 'block' : 'none';
-  });
-
-  // ====== OCR + parser (same robust implementation as before) ======
-  function normalizeName(s){
-    if(!s) return '';
-    let t = s.toString();
-    t = t.replace(/[.,;:|_*"“”'`~(){}\[\]]+/g,'');
-    t = t.replace(/\s+/g,' ').trim();
-    t = t.toUpperCase();
-    if (/[A-Z]/.test(t) && /0/.test(t)) t = t.replace(/0/g,'O');
-    t = t.replace(/[^A-Z0-9\s\/\-\.%]/g,'');
-    return t;
+function simpleRowsToParsed(oldRows){
+  const parsed = [];
+  for(const row of oldRows){
+    const texts = row;
+    const nums = texts.join(' ').match(/-?\d+(\.\d+)?/g) || [];
+    let result=null, mean=null, sd=null;
+    if(nums.length>=3){ result=parseFloat(nums[nums.length-3]); mean=parseFloat(nums[nums.length-2]); sd=parseFloat(nums[nums.length-1]);}
+    else if(nums.length===2){ result=parseFloat(nums[0]); mean=parseFloat(nums[1]); }
+    const rawTest = texts.find(t => /[A-Za-z]/.test(t)) || texts[0] || '';
+    const test = normalizeAndCorrectTestName(rawTest);
+    parsed.push({test:test.trim(), result, mean, sd, raw:texts.join(' '), rawTest});
   }
+  return parsed;
+}
 
-  function normalizeAndCorrectTestName(raw){
-    if(!raw) return '';
-    let s = normalizeName(raw);
-    if (correctionDict[normalizeKey(s)]) return correctionDict[normalizeKey(s)];
-    s = s.replace(/\b(MG\/DL|MGDL|G\/DL|U\/L|UL|MMOL|UG\/ML)\b/g,'').trim();
-    if (correctionDict[normalizeKey(s)]) return correctionDict[normalizeKey(s)];
-    const tokens = s.split(/\s+/).filter(Boolean);
-    if (tokens.length) {
-      if (correctionDict[normalizeKey(tokens[0])]) return correctionDict[normalizeKey(tokens[0])];
-      if (tokens.length>1 && correctionDict[normalizeKey(tokens[0] + ' ' + tokens[1])]) return correctionDict[normalizeKey(tokens[0] + ' ' + tokens[1])];
-    }
-    const tryVariants = [
-      s.replace(/I/g,'1'), s.replace(/1/g,'I'),
-      s.replace(/V/g,'U'), s.replace(/U/g,'V'),
-      s.replace(/L0/g,'LO'), s.replace(/O0/g,'OO')
-    ];
-    for (const v of tryVariants) if (correctionDict[normalizeKey(v)]) return correctionDict[normalizeKey(v)];
-    if (/^[A-Z]{2,6}$/.test(s)) return s;
-    return s.split(/\s+/).slice(0,3).join(' ');
+function parseUsingColumnDetection(rows){
+  if(!rows.length) return [];
+  const colXs = detectColumnsFromRows(rows, 28);
+  lastParse.colXs = colXs;
+  if(colXs.length < 2){
+    const old = rows.map(r=>r.map(w=>w.text));
+    return simpleRowsToParsed(old);
   }
+  const assigned = assignWordsToColumns(rows, colXs);
+  const numericInfo = detectNumericColumns(assigned);
+  const colInfo = chooseNumericColumns(colXs, assigned);
 
-  // cluster words into rows
-  function wordsToRows(words, tolerance=18) {
-    const entries = words.map(w=>{
-      const bbox = w.bbox || {x0:w.x0, y0:w.y0, x1:w.x1, y1:w.y1};
-      const ycenter = (bbox.y0 + bbox.y1)/2;
-      const xcenter = (bbox.x0 + bbox.x1)/2;
-      return {text: w.text, ycenter, xcenter, bbox};
-    }).filter(e => e.text && e.text.trim().length>0);
-    entries.sort((a,b)=>a.ycenter - b.ycenter);
-    const rows = [];
-    for (const e of entries) {
-      let placed=false;
-      for (const r of rows) {
-        const dy = Math.abs(e.ycenter - r.meanY);
-        if (dy <= tolerance) {
-          r.items.push(e);
-          r.meanY = (r.meanY * (r.items.length-1) + e.ycenter) / r.items.length;
-          placed=true; break;
-        }
-      }
-      if (!placed) rows.push({meanY:e.ycenter, items:[e]});
-    }
-    const finalRows = rows.map(r => { r.items.sort((a,b)=>a.xcenter - b.xcenter); return r.items; });
-    return finalRows;
-  }
-
-  function detectColumnsFromRows(rows, bucketPixels=30) {
-    const xs = [];
-    for (const r of rows) for (const w of r) xs.push(w.xcenter);
-    if (!xs.length) return [];
-    const minX = Math.min(...xs), maxX = Math.max(...xs);
-    const buckets = Math.max(8, Math.ceil((maxX-minX)/bucketPixels));
-    const counts = new Array(buckets).fill(0), sums = new Array(buckets).fill(0);
-    for (const x of xs) {
-      const i = Math.min(buckets-1, Math.floor((x-minX)/(maxX-minX+1e-9) * buckets));
-      counts[i]++; sums[i]+=x;
-    }
-    const peaks = [];
-    for (let i=0;i<buckets;i++){
-      const left = (i>0?counts[i-1]:0), right=(i<buckets-1?counts[i+1]:0);
-      if (counts[i] >= left && counts[i] >= right && counts[i] > 2) {
-        const avgX = sums[i]/counts[i];
-        peaks.push({bucket:i, count:counts[i], x:avgX});
-      }
-    }
-    peaks.sort((a,b)=>a.x-b.x);
-    const merged = [];
-    for (const p of peaks) {
-      if (!merged.length) merged.push(p);
-      else {
-        const last = merged[merged.length-1];
-        if (Math.abs(p.x - last.x) < bucketPixels*0.9) {
-          last.x = (last.x*last.count + p.x*p.count) / (last.count + p.count);
-          last.count += p.count;
-        } else merged.push(p);
-      }
-    }
-    return merged.map(m=>m.x);
-  }
-
-  function assignWordsToColumns(rows, colXs) {
-    const assignedRows = rows.map(r => {
-      const cells = colXs.map(_=>[]);
-      for (const w of r) {
-        let best = 0, bestDist = Math.abs(w.xcenter - colXs[0]);
-        for (let i=1;i<colXs.length;i++){
-          const d = Math.abs(w.xcenter - colXs[i]);
-          if (d < bestDist) { bestDist = d; best = i; }
-        }
-        cells[best].push(w.text);
-      }
-      return cells.map(c=>c.join(' ').trim());
+  // If user manually chose mapping, use that
+  if(window._manuallySelectedCols){
+    const m = window._manuallySelectedCols;
+    const parsed = assigned.map(cells=>{
+      const rawTestCell = (cells[m.testCol]||'').trim() || cells[0] || '';
+      const test = normalizeAndCorrectTestName(rawTestCell);
+      const result = tryParseNumber(cells[m.resultIndex]) || null;
+      const mean = tryParseNumber(cells[m.meanIndex]) || null;
+      const sdRaw = tryParseNumber(cells[m.sdIndex]);
+      const sd = salvageSd(mean, sdRaw);
+      return {test, result, mean, sd, raw: cells.join(' | '), rawTest: rawTestCell};
     });
-    return assignedRows;
+    return parsed.filter(r=>r.test);
   }
 
-  function detectNumericColumns(assignedRows) {
-    const cols = assignedRows[0] ? assignedRows[0].length : 0;
-    const numericScore = new Array(cols).fill(0);
-    const totalRows = assignedRows.length;
-    for (const r of assignedRows) {
-      for (let i=0;i<cols;i++){
-        const s = r[i] || '';
-        const numMatches = (s.match(/-?\d+(\.\d+)?/g) || []).length;
-        if (numMatches) numericScore[i] += 1;
-      }
-    }
-    return numericScore.map(s => s / Math.max(1,totalRows));
+  // Otherwise use heuristics
+  const testCol = colInfo.testCol;
+  const pick = [colInfo.resultIdx, colInfo.meanIdx, colInfo.sdIdx];
+
+  // If top candidate looks like large curve IDs, show picker so user can override
+  const topNumeric = numericInfo.length ? numericInfo[0] : null;
+  if(topNumeric && topNumeric.avgMag > 10000 && topNumeric.freq > 0.6){
+    // show column picker
+    renderColumnPicker(colXs, colInfo);
+    // still parse a best-effort (but user should pick)
   }
 
-  function parseUsingColumnDetection(rows, rawText) {
-    if (!rows.length) return [];
-    const colXs = detectColumnsFromRows(rows, 28);
-    if (colXs.length < 2) {
-      const old = rows.map(r => r.map(w => w.text));
-      return simpleRowsToParsed(old);
-    }
-    const assigned = assignWordsToColumns(rows, colXs);
-    const numericScores = detectNumericColumns(assigned);
-    const indexed = numericScores.map((s,i)=>({i,s}));
-    indexed.sort((a,b)=>b.s - a.s);
-    const numericCandidates = indexed.filter(x => x.s >= 0.25).map(x => x.i);
-    while (numericCandidates.length < 3 && numericCandidates.length < colXs.length) {
-      const next = indexed.filter(x=>!numericCandidates.includes(x.i))[numericCandidates.length];
-      if (!next) break;
-      numericCandidates.push(next.i);
-    }
-    numericCandidates.sort((a,b)=>a-b);
-    const nonNumericIndices = [];
-    for (let i=0;i<colXs.length;i++){
-      if (!numericCandidates.includes(i)) nonNumericIndices.push(i);
-    }
-    const testCol = nonNumericIndices.length ? nonNumericIndices[0] : Math.max(0, (numericCandidates[0]||0)-1);
-    const numericSortedByX = numericCandidates.slice().sort((a,b)=>colXs[a]-colXs[b]);
-    let pick = numericSortedByX.slice(-3);
-    if (pick.length < 3) {
-      for (const idx of numericSortedByX) {
-        if (!pick.includes(idx)) pick.unshift(idx);
-        if (pick.length===3) break;
-      }
-    }
-    pick.sort((a,b)=>colXs[a]-colXs[b]);
+  const parsed = assigned.map(cells=>{
+    const rawTestCell = (cells[testCol] || '').replace(/[^\w\s\-\.\(\)\/%]/g,'').trim() || cells[0] || '';
+    const correctedTest = normalizeAndCorrectTestName(rawTestCell);
+    const result = tryParseNumber(cells[pick[0]]) || null;
+    const mean = tryParseNumber(cells[pick[1]]) || null;
+    const sdRaw = tryParseNumber(cells[pick[2]]);
+    const sd = salvageSd(mean, sdRaw);
+    return {test: correctedTest, result, mean, sd, raw: cells.join(' | '), rawTest: rawTestCell};
+  });
+  const filtered = parsed.filter(r => r.test && (r.result !== null || r.mean !== null || r.sd !== null));
+  return filtered.length ? filtered : parsed;
+}
 
-    const parsed = assigned.map(cells => {
-      const rawTestCell = (cells[testCol] || '').replace(/[^\w\s\-\.\(\)\/%]/g,'').trim() || cells[0] || '';
-      const correctedTest = normalizeAndCorrectTestName(rawTestCell);
-      const result = parseFloat((cells[pick[0]]||'').replace(/[^0-9.\-]/g,'')) || null;
-      const mean   = parseFloat((cells[pick[1]]||'').replace(/[^0-9.\-]/g,'')) || null;
-      const sd     = parseFloat((cells[pick[2]]||'').replace(/[^0-9.\-]/g,'')) || null;
-      return {test: correctedTest, result, mean, sd, raw: cells.join(' | ')};
-    });
-    const filtered = parsed.filter(r => r.test && (r.result !== null || r.mean !== null || r.sd !== null));
-    return filtered.length ? filtered : parsed;
+/* ================= Westgard (simple z-based flags) ================= */
+function applyWestgard(rows){
+  const flags=[];
+  for(const r of rows){
+    if(r.result == null || r.mean == null || r.sd == null || r.sd <= 0) continue;
+    const z = (r.result - r.mean) / r.sd;
+    if(Math.abs(z) > 3) flags.push({test:r.test, rule:'1:3s Violation', z});
+    else if(Math.abs(z) > 2) flags.push({test:r.test, rule:'1:2s Warning', z});
   }
+  return flags;
+}
 
-  function simpleRowsToParsed(oldRows) {
-    const parsed = [];
-    for (const row of oldRows) {
-      const texts = row;
-      const nums = texts.join(' ').match(/-?\d+(\.\d+)?/g) || [];
-      let result=null, mean=null, sd=null;
-      if (nums.length>=3) {
-        result=parseFloat(nums[nums.length-3]);
-        mean=parseFloat(nums[nums.length-2]);
-        sd=parseFloat(nums[nums.length-1]);
-      } else if (nums.length===2) { result=parseFloat(nums[0]); mean=parseFloat(nums[1]); }
-      const rawTest = texts.find(t => /[A-Za-z]/.test(t)) || texts[0] || '';
-      const test = normalizeAndCorrectTestName(rawTest);
-      parsed.push({test: test.trim(), result, mean, sd, raw: texts.join(' ')});
-    }
-    return parsed;
-  }
+/* ================= rendering parsed rows UI ================= */
+function escapeHtml(s){ return (s===null||s===undefined)?'':String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-  function applyWestgard(rows) {
-    const flags = [];
-    for (const r of rows) {
-      if (r.result == null || r.mean == null || r.sd == null || r.sd <= 0) continue;
-      const z = (r.result - r.mean) / r.sd;
-      if (Math.abs(z) > 3) flags.push({test:r.test, rule:'1:3s Violation', z});
-      else if (Math.abs(z) > 2) flags.push({test:r.test, rule:'1:2s Warning', z});
-    }
-    return flags;
-  }
-
-  function renderTable(rows) {
-    if (!rows.length) { resultArea.innerHTML = '<div class="small">No rows found. Try cropping or adjusting tolerance.</div>'; return; }
-    let html = '<table><thead><tr><th>Test</th><th>Result</th><th>Mean</th><th>SD</th></tr></thead><tbody>';
-    for (const r of rows) {
-      html += `<tr><td style="text-align:left">${escapeHtml(r.test)}</td><td>${r.result ?? '-'}</td><td>${r.mean ?? '-'}</td><td>${r.sd ?? '-'}</td></tr>`;
-    }
-    html += '</tbody></table>';
-    resultArea.innerHTML = html;
-  }
-
-  function renderFindings(flags) {
-    if (!flags.length) { findings.innerHTML = '<div style="color:green;font-weight:700">No Westgard violations detected.</div>'; return; }
-    let html = '<ul style="padding-left:18px">';
-    for (const f of flags) html += `<li><span class="flag-danger">${escapeHtml(f.test)} — ${escapeHtml(f.rule)}</span> <span class="small"> (z=${(f.z||0).toFixed(2)})</span></li>`;
-    html += '</ul>';
-    findings.innerHTML = html;
-  }
-
-  function escapeHtml(s){ return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-  // OCR call
-  async function doOCR(imageSource) {
-    try {
-      setStatus('Running OCR — fetching model if needed...');
-      showProgress(0.02);
-      const options = {
-        langPath: TESS_LANG_PATH,
-        logger: m => {
-          if (m && m.status) {
-            const pct = m.progress ? Math.round(m.progress*100) : '';
-            setStatus(`${m.status}${pct ? ' — ' + pct + '%' : ''}`);
-            if (typeof m.progress === 'number') showProgress(m.progress);
-          }
-        }
-      };
-      const res = await Tesseract.recognize(imageSource, 'eng', options);
-      hideProgress();
-      setStatus('OCR complete — constructing rows');
-      const words = (res && res.data && res.data.words) ? res.data.words : [];
-      const rawtext = (res && res.data && res.data.text) ? res.data.text : (res && res.text) || '';
-      log('OCR words: ' + words.length);
-
-      const mapped = words.map(w => {
-        if (w.bbox) return {text:w.text, bbox:w.bbox, x0:w.bbox.x0,y0:w.bbox.y0,x1:w.bbox.x1,y1:w.bbox.y1};
-        return {text:w.text, bbox:{x0:w.x0,y0:w.y0,x1:w.x1,y1:w.y1}, x0:w.x0,y0:w.y0,x1:w.x1,y1:w.y1};
-      });
-
-      const tol = parseInt(tolInput.value || '18', 10);
-      const rows = wordsToRows(mapped, tol);
-      log('clustered rows: ' + rows.length);
-
-      const parsed = parseUsingColumnDetection(rows, rawtext);
-      log('parsed rows: ' + parsed.length);
-
-      const cleaned = parsed.filter(r => {
-        if (!r.test || r.test.length < 2) return false;
-        if (r.result==null && r.mean==null && r.sd==null) return false;
-        return true;
-      });
-
-      renderTable(cleaned);
-      const flags = applyWestgard(cleaned);
+function renderParsedEditable(rows){
+  if(!rows || !rows.length){ resultArea.innerHTML = '<div class="small">No rows parsed. Try cropping or adjusting tolerance.</div>'; return; }
+  let html = '<table class="table"><thead><tr><th style="text-align:left">Test</th><th>Result</th><th>Mean</th><th>SD</th><th>Actions</th></tr></thead><tbody>';
+  rows.forEach((r, idx)=>{
+    html += `<tr data-idx="${idx}"><td style="text-align:left"><input data-field="test" style="width:100%;padding:6px;border-radius:6px;border:1px solid #e6eaf0" value="${escapeHtml(r.test)}"></td>
+      <td><input data-field="result" style="width:90px;padding:6px;border-radius:6px;border:1px solid #e6eaf0" value="${r.result ?? ''}"></td>
+      <td><input data-field="mean" style="width:90px;padding:6px;border-radius:6px;border:1px solid #e6eaf0" value="${r.mean ?? ''}"></td>
+      <td><input data-field="sd" style="width:90px;padding:6px;border-radius:6px;border:1px solid #e6eaf0" value="${r.sd ?? ''}"></td>
+      <td><button class="small-btn" data-action="save" data-idx="${idx}">Save Row</button> <button class="small-btn" data-action="dict" data-idx="${idx}">Add to dict</button></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  resultArea.innerHTML = html;
+  resultArea.querySelectorAll('button[data-action="save"]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const idx = parseInt(b.dataset.idx);
+      const tr = resultArea.querySelector(`tr[data-idx="${idx}"]`);
+      const test = tr.querySelector('input[data-field="test"]').value.trim();
+      const result = parseFloat(tr.querySelector('input[data-field="result"]').value) || null;
+      const mean = parseFloat(tr.querySelector('input[data-field="mean"]').value) || null;
+      const sd = parseFloat(tr.querySelector('input[data-field="sd"]').value) || null;
+      lastParse.parsed[idx].test = test; lastParse.parsed[idx].result = result; lastParse.parsed[idx].mean = mean; lastParse.parsed[idx].sd = sd;
+      setStatus('Row saved locally. Recomputing Westgard...');
+      const flags = applyWestgard(lastParse.parsed);
       renderFindings(flags);
-
-    } catch (err) {
-      hideProgress();
-      setStatus('OCR failed: ' + (err.message || err), false);
-      log('OCR error: ' + err);
-      resultArea.innerHTML = '<div class="small">OCR failed. Try cropping or lowering contrast.</div>';
-      findings.innerHTML = '';
-    }
-  }
-
-  // file selection and preprocessing
-  let lastPrepared = null;
-  fileInput.addEventListener('change', async (ev) => {
-    const f = ev.target.files && ev.target.files[0];
-    if (!f) return;
-    setStatus('Preparing image (downscale + preprocess)...');
-    showProgress(0.02);
-    try {
-      const prepared = await downscaleImage(f, 1400);
-      const contrast = parseFloat(contrastInput.value || '1.0');
-      const doThreshold = threshCheckbox.checked;
-      const procCanvas = preprocessCanvasFromImage(prepared.imgElement, contrast, doThreshold);
-      const previewDataURL = procCanvas.toDataURL('image/jpeg', 0.9);
-      preview.style.display='block';
-      preview.innerHTML = `<img src="${previewDataURL}" alt="preview">`;
-      procCanvas.toBlob(blob => {
-        lastPrepared = {blob, previewDataURL};
-        setStatus('Image ready. Tap Start OCR or wait a moment to auto-run...');
-        hideProgress();
-        setTimeout(() => {
-          if (lastPrepared && lastPrepared.previewDataURL === previewDataURL) startOCR();
-        }, 800);
-      }, 'image/jpeg', 0.9);
-    } catch (e) {
-      hideProgress();
-      setStatus('Image prep failed: ' + (e.message || e), false);
-      log('prep error: ' + e);
-    }
-  });
-
-  async function downscaleImage(file, maxDim=1400){
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        let {width:w, height:h} = img;
-        const scale = Math.min(1, maxDim / Math.max(w,h));
-        if (scale < 1) { w = Math.round(w*scale); h = Math.round(h*scale); }
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, w, h);
-        canvas.toBlob(blob => {
-          URL.revokeObjectURL(url);
-          resolve({blob, imgElement: img, canvas});
-        }, 'image/jpeg', 0.9);
-      };
-      img.onerror = (err) => { URL.revokeObjectURL(url); reject(err); };
-      img.src = url;
     });
-  }
+  });
+  resultArea.querySelectorAll('button[data-action="dict"]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const idx = parseInt(b.dataset.idx);
+      const r = lastParse.parsed[idx];
+      const raw = r.rawTest || r.test;
+      const k = normalizeKey(raw);
+      const v = r.test;
+      if(!k) return alert('No token found');
+      correctionDict[k] = v; saveDict(); updateDictUI(); setStatus('Added dict: '+k+' → '+v);
+    });
+  });
+}
 
-  function preprocessCanvasFromImage(imgElement, contrast=1.0, doThreshold=false) {
-    const w = imgElement.width, h = imgElement.height;
-    const c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    const ctx = c.getContext('2d');
-    ctx.drawImage(imgElement, 0, 0, w, h);
-    const id = ctx.getImageData(0,0,w,h);
-    const d = id.data;
-    for (let i=0;i<d.length;i+=4) {
-      const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
-      let v = (lum - 128) * contrast + 128;
-      v = Math.max(0, Math.min(255, v));
-      d[i]=d[i+1]=d[i+2]=v;
-    }
-    ctx.putImageData(id,0,0);
-    if (doThreshold) {
-      const ctx2 = c.getContext('2d');
-      const id2 = ctx2.getImageData(0,0,w,h);
-      const d2 = id2.data;
-      const block = Math.max(12, Math.floor(Math.min(w,h)/50));
-      for (let by=0; by<h; by+=block) {
-        for (let bx=0; bx<w; bx+=block) {
-          let sum=0, count=0;
-          for (let yy=by; yy<Math.min(h,by+block); yy++) {
-            for (let xx=bx; xx<Math.min(w,bx+block); xx++) {
-              const idx=(yy*w+xx)*4; sum+=d2[idx]; count++;
-            }
+/* ================= preview corrections UI ================= */
+function renderPreviewCorrections(words){
+  previewCorr.innerHTML = '';
+  if(!words || !words.length){ previewCorr.innerHTML='No tokens yet'; return; }
+  const container = document.createElement('div');
+  words.slice(0,200).forEach((w)=>{
+    const token = normalizeKey(w.text || '');
+    const suggest = correctionDict[token] || (bestFuzzyMatch(token)?bestFuzzyMatch(token).value:'');
+    const row = document.createElement('div'); row.style.display='flex'; row.style.gap='8px'; row.style.alignItems='center'; row.style.marginBottom='6px';
+    const tokSpan = document.createElement('div'); tokSpan.style.width='28%'; tokSpan.textContent = w.text; tokSpan.style.fontWeight='700';
+    const sugSpan = document.createElement('div'); sugSpan.style.width='40%'; sugSpan.textContent = suggest || '-';
+    const applyBtn = document.createElement('button'); applyBtn.className='small-btn'; applyBtn.textContent = 'Apply';
+    applyBtn.onclick = ()=>{
+      if(!suggest) return alert('No suggestion for this token');
+      correctionDict[normalizeKey(w.text)] = suggest; saveDict(); updateDictUI(); setStatus('Applied suggestion for '+w.text);
+      renderPreviewCorrections(words);
+    };
+    const addBtn = document.createElement('button'); addBtn.className='small-btn'; addBtn.textContent='Add manual';
+    addBtn.onclick = ()=>{
+      const val = prompt('Canonical name for "'+w.text+'":', suggest || w.text);
+      if(!val) return;
+      correctionDict[normalizeKey(w.text)] = val; saveDict(); updateDictUI(); setStatus('Manually added '+w.text+' → '+val);
+      renderPreviewCorrections(words);
+    };
+    row.appendChild(tokSpan); row.appendChild(sugSpan); row.appendChild(applyBtn); row.appendChild(addBtn);
+    container.appendChild(row);
+  });
+  previewCorr.appendChild(container);
+}
+
+/* ================= raw words UI ================= */
+function renderRawWords(words){
+  if(!words || !words.length){ rawWords.textContent = 'no tokens'; return; }
+  rawWords.textContent = words.map(w=>`[${w.text}]`).join(' ');
+}
+
+/* ================= OCR pipeline ================= */
+async function doOCR(imageSource){
+  try {
+    setStatus('Starting OCR...');
+    showProgress(0.03);
+    const options = { langPath: TESS_LANG_PATH, logger: m => {
+      if(m && m.status){
+        const pct = m.progress ? Math.round(m.progress*100) : '';
+        setStatus(`${m.status}${pct? ' — '+pct+'%': ''}`);
+        if(typeof m.progress === 'number') showProgress(m.progress);
+      }
+    }};
+    const res = await Tesseract.recognize(imageSource, 'eng', options);
+    hideProgress();
+    setStatus('OCR complete');
+    const words = (res && res.data && res.data.words) ? res.data.words : [];
+    const rawtext = (res && res.data && res.data.text) ? res.data.text : (res && res.text) || '';
+    lastParse.rawText = rawtext; lastParse.words = words;
+    renderRawWords(words);
+    rawText.style.display='none';
+    // prepare mapped data for parser
+    const mapped = words.map(w => {
+      if(w.bbox) return {text:w.text, bbox:w.bbox, x0:w.bbox.x0,y0:w.bbox.y0,x1:w.bbox.x1,y1:w.bbox.y1};
+      return {text:w.text, bbox:{x0:w.x0,y0:w.y0,x1:w.x1,y1:w.y1}, x0:w.x0,y0:w.y0,x1:w.x1,y1:w.y1};
+    });
+    const tol = parseInt(tolInput.value || '18',10);
+    const rows = wordsToRows(mapped, tol);
+    log('clustered rows: '+rows.length);
+    const parsed = parseUsingColumnDetection(rows);
+    lastParse.parsed = parsed;
+    renderParsedEditable(parsed);
+    renderPreviewCorrections(words);
+    updateDictUI();
+    saveDict();
+    const flags = applyWestgard(parsed);
+    renderFindings(flags);
+  } catch(err){
+    hideProgress();
+    setStatus('OCR failed: '+(err.message||err));
+    log('OCR error: '+err);
+  }
+}
+
+fileInput.addEventListener('change', async (ev)=>{
+  const f = ev.target.files && ev.target.files[0];
+  if(!f) return;
+  setStatus('Preparing image...');
+  showProgress(0.02);
+  try {
+    const prepared = await downscaleImage(f, 1400);
+    const contrast = parseFloat(contrastInput.value || '1.0');
+    const doThreshold = threshCheckbox.checked;
+    const procCanvas = preprocessCanvasFromImage(prepared.imgElement, contrast, doThreshold);
+    const previewDataURL = procCanvas.toDataURL('image/jpeg', 0.9);
+    previewEl.style.display='block';
+    previewEl.innerHTML = `<img src="${previewDataURL}">`;
+    procCanvas.toBlob(blob=>{ lastPrepared = {blob, previewDataURL}; setStatus('Image ready. Tap Start OCR.'); hideProgress(); }, 'image/jpeg', 0.9);
+  } catch(e){ hideProgress(); setStatus('Image prep failed: '+e); log('prep error: '+e); }
+});
+
+async function downscaleImage(file, maxDim=1400){
+  return new Promise((resolve,reject)=>{
+    const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = ()=>{ let {width:w,height:h} = img; const scale = Math.min(1, maxDim / Math.max(w,h)); if(scale < 1){ w=Math.round(w*scale); h=Math.round(h*scale); } const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h; const ctx = canvas.getContext('2d'); ctx.drawImage(img,0,0,w,h); canvas.toBlob(blob=>{ URL.revokeObjectURL(url); resolve({blob, imgElement:img}); }, 'image/jpeg', 0.9); };
+    img.onerror = e=>{ URL.revokeObjectURL(url); reject(e) };
+    img.src = url;
+  });
+}
+
+function preprocessCanvasFromImage(imgElement, contrast=1.0, doThreshold=false){
+  const w = imgElement.width, h = imgElement.height;
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const ctx = c.getContext('2d'); ctx.drawImage(imgElement,0,0,w,h);
+  const id = ctx.getImageData(0,0,w,h); const d = id.data;
+  for(let i=0;i<d.length;i+=4){
+    const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+    let v = (lum - 128) * contrast + 128; v = Math.max(0, Math.min(255, v));
+    d[i]=d[i+1]=d[i+2]=v;
+  }
+  ctx.putImageData(id,0,0);
+  if(doThreshold){
+    const id2 = ctx.getImageData(0,0,w,h); const d2 = id2.data;
+    const block = Math.max(12, Math.floor(Math.min(w,h)/50));
+    for(let by=0; by<h; by+=block){
+      for(let bx=0; bx<w; bx+=block){
+        let sum=0,count=0;
+        for(let yy=by; yy<Math.min(h,by+block); yy++){
+          for(let xx=bx; xx<Math.min(w,bx+block); xx++){
+            const idx=(yy*w+xx)*4; sum+=d2[idx]; count++;
           }
-          const avg = sum / Math.max(1,count);
-          for (let yy=by; yy<Math.min(h,by+block); yy++) {
-            for (let xx=bx; xx<Math.min(w,bx+block); xx++) {
-              const idx=(yy*w+xx)*4;
-              const v = d2[idx] < (avg - 20) ? 0 : 255;
-              d2[idx]=d2[idx+1]=d2[idx+2]=v;
-            }
+        }
+        const avg = sum/Math.max(1,count);
+        for(let yy=by; yy<Math.min(h,by+block); yy++){
+          for(let xx=bx; xx<Math.min(w,bx+block); xx++){
+            const idx=(yy*w+xx)*4; const v = d2[idx] < (avg-20) ? 0 : 255; d2[idx]=d2[idx+1]=d2[idx+2]=v;
           }
         }
       }
-      ctx2.putImageData(id2,0,0);
     }
-    return c;
+    ctx.putImageData(id2,0,0);
   }
+  return c;
+}
 
-  async function startOCR() {
-    if (!lastPrepared) { setStatus('No image ready. Please choose an image first.', false); return; }
-    setStatus('Running OCR now...');
-    showProgress(0.05);
-    await doOCR(lastPrepared.previewDataURL || lastPrepared.blob);
-  }
-  startBtn.addEventListener('click', startOCR);
+startBtn.addEventListener('click', async ()=>{
+  if(!lastPrepared){ if(fileInput.files && fileInput.files[0]){} else return alert('Choose image first'); }
+  setStatus('Starting OCR'); showProgress(0.02);
+  await doOCR(lastPrepared.previewDataURL || lastPrepared.blob);
+});
 
-  // ====== initialization: load dict & render
-  loadDictFromLocalOrDefault();
-  renderDictTable();
-  updateDictCount();
-  setStatus('Ready. Upload a QC screenshot (cropped to table helps).');
+reparseBtn.addEventListener('click', ()=>{
+  if(!lastParse.words || !lastParse.words.length) return alert('Run OCR first');
+  try {
+    const mapped = lastParse.words.map(w => {
+      if(w.bbox) return {text:w.text, bbox:w.bbox, x0:w.bbox.x0,y0:w.bbox.y0,x1:w.bbox.x1,y1:w.bbox.y1};
+      return {text:w.text, bbox:{x0:w.x0,y0:w.y0,x1:w.x1,y1:w.y1}, x0:w.x0,y0:w.y0,x1:w.x1,y1:w.y1};
+    });
+    const tol = parseInt(tolInput.value || '18',10);
+    const rows = wordsToRows(mapped, tol);
+    const parsed = parseUsingColumnDetection(rows);
+    lastParse.parsed = parsed;
+    renderParsedEditable(parsed);
+    renderPreviewCorrections(lastParse.words);
+    const flags = applyWestgard(parsed);
+    renderFindings(flags);
+    setStatus('Re-parse complete');
+  } catch(e){ setStatus('Re-parse failed: '+e); log('reparse error:'+e); }
+});
 
-})();
+showRawText.addEventListener('click', ()=>{
+  if(!lastParse.rawText) return alert('Run OCR first');
+  rawText.style.display = rawText.style.display === 'none' ? 'block' : 'none';
+  rawText.textContent = lastParse.rawText;
+});
+
+copyRawBtn.addEventListener('click', ()=>{
+  if(!lastParse.rawText) return alert('Run OCR first');
+  navigator.clipboard.writeText(lastParse.rawText).then(()=>alert('Raw OCR text copied'), ()=>alert('Copy failed'));
+});
+
+exportRows.addEventListener('click', ()=>{
+  if(!lastParse.parsed || !lastParse.parsed.length) return alert('No parsed rows to export');
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(lastParse.parsed,null,2));
+  const a = document.createElement('a'); a.href = dataStr; a.download='parsed_rows.json'; document.body.appendChild(a); a.click(); a.remove();
+});
+
+fixColumnsBtn.addEventListener('click', ()=>{
+  // open picker with current detections
+  if(!lastParse.words || !lastParse.words.length) return alert('Run OCR first');
+  const mapped = lastParse.words.map(w => ({text:w.text,bbox:w.bbox,x0:w.bbox?.x0||w.x0,y0:w.bbox?.y0||w.y0,x1:w.bbox?.x1||w.x1,y1:w.bbox?.y1||w.y1,xcenter:((w.bbox?.x0||w.x0)+(w.bbox?.x1||w.x1))/2}));
+  const tol = parseInt(tolInput.value || '18',10);
+  const rows = wordsToRows(mapped, tol);
+  const colXs = detectColumnsFromRows(rows,28);
+  const assigned = assignWordsToColumns(rows, colXs);
+  const colInfo = chooseNumericColumns(colXs, assigned);
+  renderColumnPicker(colXs, colInfo);
+});
+
+function doParseWithMapping(){
+  if(!lastParse.words || !lastParse.words.length) return;
+  const mapped = lastParse.words.map(w => ({text:w.text,bbox:w.bbox,x0:w.bbox?.x0||w.x0,y0:w.bbox?.y0||w.y0,x1:w.bbox?.x1||w.x1,y1:w.bbox?.y1||w.y1,xcenter:((w.bbox?.x0||w.x0)+(w.bbox?.x1||w.x1))/2}));
+  const tol = parseInt(tolInput.value || '18',10);
+  const rows = wordsToRows(mapped, tol);
+  const parsed = parseUsingColumnDetection(rows);
+  lastParse.parsed = parsed;
+  renderParsedEditable(parsed);
+  const flags = applyWestgard(parsed);
+  renderFindings(flags);
+}
+
+loadDict();
+updateDictUI();
+setStatus('Ready — load an image (Chrome recommended if you saw worker errors earlier).');
+
 </script>
 </body>
 </html>
