@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>QC Analyzer — Preprocessed OCR + Robust Parser</title>
+  <title>QC Analyzer — Column OCR + Dictionary Editor</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
   <style>
@@ -21,7 +21,7 @@
     .status{margin-top:10px;font-size:0.95rem;color:#333}
     .progress{height:8px;background:#eef2ff;border-radius:999px;overflow:hidden;margin-top:8px}
     .progress > span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#5aa0ff);width:0%}
-    pre.debug{background:#0b1220;color:#e6f0ff;padding:8px;border-radius:8px;max-height:220px;overflow:auto;font-size:0.8rem}
+    pre.debug{background:#0b1220;color:#e6f0ff;padding:8px;border-radius:8px;max-height:200px;overflow:auto;font-size:0.8rem}
     table{width:100%;border-collapse:collapse;margin-top:8px}
     th,td{padding:6px;border-bottom:1px solid #f1f5f9;text-align:center;font-size:0.9rem}
     th{background:#fbfdff;font-weight:700}
@@ -30,13 +30,21 @@
     button.primary{background:var(--accent);color:#fff;border:none;padding:8px 10px;border-radius:8px;cursor:pointer}
     .controls{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
     .small-input{padding:6px;border-radius:8px;border:1px solid #ddd;font-size:0.9rem}
+    .dict-table{width:100%;border:1px solid #eee;border-radius:8px;overflow:auto}
+    .dict-table table{width:100%;border-collapse:collapse}
+    .dict-table th, .dict-table td{padding:8px;border-bottom:1px solid #f4f6f8;text-align:left}
+    .dict-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+    .chip{display:inline-block;padding:6px 10px;border-radius:999px;background:#eef6ff;color:var(--accent);font-weight:700}
     footer.note{margin-top:10px;color:var(--muted);font-size:0.85rem;text-align:center}
+    input.small-field{padding:6px;border-radius:6px;border:1px solid #ddd;width:100%}
+    .row-inline{display:flex;gap:8px}
+    @media (max-width:560px){ .row{flex-direction:column;align-items:stretch} .row-inline{flex-direction:column} }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="card">
-      <h1>QC Analyzer — Preprocessed OCR + Robust Parser</h1>
+      <h1>QC Analyzer — Column OCR + Dictionary Editor</h1>
       <div class="hint">Upload a screenshot of your QC table (Test / Result / Mean / SD). OCR runs in your browser — nothing is uploaded.</div>
 
       <div class="row" style="margin-top:12px;">
@@ -46,10 +54,10 @@
       </div>
 
       <div class="controls">
-        <div class="small">Row clustering tolerance(px): <input id="tol" class="small-input" type="number" value="18" min="2" style="width:80px"></div>
-        <div class="small">Contrast boost (0–2): <input id="contrast" class="small-input" type="number" value="1.2" step="0.1" min="0.5" max="3" style="width:80px"></div>
-        <div class="small">Apply threshold: <input id="thresh" type="checkbox" checked></div>
-        <div class="small" style="margin-left:auto">If parser fails try increasing tolerance or cropping to numeric columns.</div>
+        <div class="small">Row tolerance(px): <input id="tol" class="small-input" type="number" value="18" min="2" style="width:80px"></div>
+        <div class="small">Contrast (0.5–2): <input id="contrast" class="small-input" type="number" value="1.0" step="0.1" min="0.5" max="3" style="width:80px"></div>
+        <div class="small">Apply threshold: <input id="thresh" type="checkbox"></div>
+        <div class="small" style="margin-left:auto">Auto-correct: <span id="dictCount" class="chip">0</span></div>
       </div>
 
       <div id="status" class="status small">Initializing...</div>
@@ -69,15 +77,46 @@
     </div>
 
     <div class="card">
+      <h3 style="margin:0 0 8px 0">Dictionary Manager</h3>
+
+      <div class="dict-actions">
+        <button id="showDictBtn" class="primary">Show / Edit Dictionary</button>
+        <button id="addRowBtn" class="small-input">Add entry</button>
+        <button id="exportBtn" class="small-input">Export JSON</button>
+        <label style="display:inline-block" class="small-input">
+          Import JSON <input id="importFile" type="file" accept=".json" style="display:none">
+        </label>
+        <button id="resetBtn" class="small-input">Reset to defaults</button>
+        <div style="margin-left:auto" class="small">Changes saved to browser (localStorage). Use export to save file.</div>
+      </div>
+
+      <div id="dictContainer" class="dict-table" style="display:none;margin-top:10px">
+        <table id="dictTable">
+          <thead><tr><th style="width:38%">OCR token</th><th style="width:48%">Canonical name</th><th style="width:14%">Actions</th></tr></thead>
+          <tbody id="dictTbody"></tbody>
+        </table>
+        <div style="margin-top:8px" class="row-inline">
+          <textarea id="dictRaw" placeholder="Or paste JSON here and click Apply" style="width:100%;height:120px;border-radius:8px;padding:8px;border:1px solid #eee"></textarea>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="applyJsonBtn" class="small-input">Apply JSON</button>
+          <button id="saveLocalBtn" class="small-input">Save to localStorage</button>
+          <button id="loadLocalBtn" class="small-input">Load from localStorage</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
       <h3 style="margin:0 0 8px 0">Debug / Logs</h3>
       <pre id="log" class="debug">waiting...</pre>
     </div>
 
-    <footer class="note">Tip: for best results crop to just the table area (Test / Result / Mean / SD). You can adjust tolerance/contrast above.</footer>
+    <footer class="note">Tip: after editing the dictionary, re-run OCR on an image to immediately see changes applied.</footer>
   </div>
 
 <script>
 (async () => {
+  // ====== Elements
   const fileInput = document.getElementById('fileinput');
   const preview = document.getElementById('preview');
   const status = document.getElementById('status');
@@ -90,116 +129,226 @@
   const tolInput = document.getElementById('tol');
   const contrastInput = document.getElementById('contrast');
   const threshCheckbox = document.getElementById('thresh');
+  const dictCountChip = document.getElementById('dictCount');
+
+  // dictionary UI
+  const showDictBtn = document.getElementById('showDictBtn');
+  const dictContainer = document.getElementById('dictContainer');
+  const dictTbody = document.getElementById('dictTbody');
+  const dictRaw = document.getElementById('dictRaw');
+  const addRowBtn = document.getElementById('addRowBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  const importFile = document.getElementById('importFile');
+  const applyJsonBtn = document.getElementById('applyJsonBtn');
+  const saveLocalBtn = document.getElementById('saveLocalBtn');
+  const loadLocalBtn = document.getElementById('loadLocalBtn');
+  const resetBtn = document.getElementById('resetBtn');
 
   const TESS_LANG_PATH = 'https://tessdata.projectnaptha.com/4.0.0';
+  const LOCAL_KEY = 'qc_analyzer_dictionary_v1';
 
   function log(s){ console.log(s); logBox.textContent = (new Date()).toLocaleTimeString() + " — " + s + "\n" + logBox.textContent; }
   function setStatus(s){ status.textContent = s; log(s); }
   function showProgress(p){ prog.style.display='block'; progFill.style.width = Math.round(p*100)+'%'; }
   function hideProgress(){ prog.style.display='none'; progFill.style.width='0%'; }
 
-  // check Tesseract availability
-  if (!Tesseract || typeof Tesseract.recognize !== 'function') {
-    setStatus('Tesseract.js not available. Try Chrome on Android.'); log('Tesseract.recognize missing'); return;
-  } else { setStatus('Tesseract ready.'); log('Tesseract ready'); }
+  // ====== Default dictionary (starter)
+  const defaultDict = {
+    'SGPTD': 'SGPT', 'SGOTD': 'SGOT', 'ALPU': 'ALP', 'AMY': 'AMY', 'LIP': 'LIP',
+    'PHOS': 'PHOS', 'BIDD': 'BILIRUBIN', 'BIT': 'BILIRUBIN', 'UREA': 'UREA', 'CRENZ': 'CREATININE',
+    'GLU': 'GLUCOSE', 'TRIG': 'TRIGLYCERIDES', 'HDLC': 'HDL-C', 'UA': 'URIC ACID', 'CA': 'CALCIUM',
+    'ALBD': 'ALBUMIN', 'PRO': 'PROTEIN', 'CHOLO': 'CHOLESTEROL', 'LDHO': 'LDH'
+  };
 
-  // downscale helper
-  async function downscaleImage(file, maxDim=1400){
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        let {width:w, height:h} = img;
-        let scale = Math.min(1, maxDim / Math.max(w,h));
-        if (scale < 1) { w = Math.round(w*scale); h = Math.round(h*scale); }
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, w, h);
-        canvas.toBlob(blob => {
-          URL.revokeObjectURL(url);
-          resolve({blob, imgElement:img, canvas, previewImg: canvas.toDataURL('image/jpeg', 0.85)});
-        }, 'image/jpeg', 0.85);
-      };
-      img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
-      img.src = url;
-    });
+  // dictionary in-memory (normalized keys)
+  let correctionDict = {};
+
+  // helper: normalize key -> uppercase, remove punctuation and extra spaces
+  function normalizeKey(s){
+    if(!s) return '';
+    return s.toString().toUpperCase().replace(/[^\w\s\/\-]/g,'').replace(/\s+/g,' ').trim();
   }
 
-  // preprocessing: grayscale, contrast, optional threshold, remove thin lines (simple)
-  function preprocessCanvasFromImage(imgElement, contrast=1.2, doThreshold=true) {
-    // draw to temp canvas
-    const w = imgElement.width, h = imgElement.height;
-    const c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    const ctx = c.getContext('2d');
-    ctx.drawImage(imgElement, 0, 0, w, h);
-    const id = ctx.getImageData(0,0,w,h);
-    const d = id.data;
-
-    // grayscale + contrast
-    const factor = (259*(contrast*255 + 255)) / (255*(259 - contrast*255) || 1); // approximate contrast mapping
-    for (let i=0;i<d.length;i+=4) {
-      // luminance
-      const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
-      // apply contrast (center around 128)
-      let v = factor*(lum - 128) + 128;
-      v = Math.max(0, Math.min(255, v));
-      d[i]=d[i+1]=d[i+2]=v;
-    }
-    ctx.putImageData(id,0,0);
-
-    if (doThreshold) {
-      // simple adaptive-ish threshold by local block average
-      const block = 16;
-      const ctx2 = c.getContext('2d');
-      const id2 = ctx2.getImageData(0,0,w,h);
-      const d2 = id2.data;
-      for (let by=0; by<h; by+=block) {
-        for (let bx=0; bx<w; bx+=block) {
-          // compute average luminance in block
-          let sum=0, count=0;
-          for (let yy=by; yy<Math.min(h,by+block); yy++) {
-            for (let xx=bx; xx<Math.min(w,bx+block); xx++) {
-              const idx = (yy*w + xx)*4;
-              sum += d2[idx];
-              count++;
-            }
-          }
-          const avg = sum / Math.max(1,count);
-          // threshold block
-          for (let yy=by; yy<Math.min(h,by+block); yy++) {
-            for (let xx=bx; xx<Math.min(w,bx+block); xx++) {
-              const idx = (yy*w + xx)*4;
-              const v = d2[idx] < (avg - 10) ? 0 : 255;
-              d2[idx]=d2[idx+1]=d2[idx+2]=v;
-            }
-          }
-        }
+  // load default or local
+  function loadDictFromLocalOrDefault(){
+    try {
+      const raw = localStorage.getItem(LOCAL_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        correctionDict = {};
+        for (const k of Object.keys(parsed)) correctionDict[normalizeKey(k)] = parsed[k];
+        log('Loaded dictionary from localStorage ('+Object.keys(correctionDict).length+' entries)');
+        return;
       }
-      ctx2.putImageData(id2,0,0);
+    } catch(e){
+      log('Failed loading local dict: ' + e);
     }
-
-    return c;
+    // fallback default
+    correctionDict = {};
+    for (const k of Object.keys(defaultDict)) correctionDict[normalizeKey(k)] = defaultDict[k];
+    log('Loaded default dictionary ('+Object.keys(correctionDict).length+' entries)');
   }
 
-  // group words into rows by y-center clustering
+  // save to localStorage
+  function saveDictToLocal(){
+    try {
+      localStorage.setItem(LOCAL_KEY, JSON.stringify(correctionDict, null, 2));
+      log('Saved dictionary to localStorage.');
+    } catch(e) {
+      log('Failed to save dict: '+ e);
+    }
+  }
+
+  // UI: render table rows for dict
+  function renderDictTable(){
+    dictTbody.innerHTML = '';
+    const keys = Object.keys(correctionDict).sort();
+    for (const k of keys) {
+      const tr = document.createElement('tr');
+      const tdKey = document.createElement('td');
+      const tdVal = document.createElement('td');
+      const tdAct = document.createElement('td');
+
+      const inKey = document.createElement('input'); inKey.className='small-field'; inKey.value = k;
+      const inVal = document.createElement('input'); inVal.className='small-field'; inVal.value = correctionDict[k];
+
+      const saveBtn = document.createElement('button'); saveBtn.textContent = 'Save'; saveBtn.className='small-input';
+      const delBtn = document.createElement('button'); delBtn.textContent = 'Delete'; delBtn.className='small-input';
+
+      saveBtn.onclick = () => {
+        const nk = normalizeKey(inKey.value);
+        if (!nk) return alert('Key required');
+        // remove old key if changed
+        if (nk !== k) delete correctionDict[k];
+        correctionDict[nk] = inVal.value.trim() || inVal.value;
+        renderDictTable();
+        updateDictCount();
+        saveDictToLocal();
+        setStatus('Dictionary entry saved.');
+      };
+      delBtn.onclick = () => {
+        if (!confirm('Delete this entry?')) return;
+        delete correctionDict[k];
+        renderDictTable();
+        updateDictCount();
+        saveDictToLocal();
+        setStatus('Entry deleted.');
+      };
+
+      tdKey.appendChild(inKey);
+      tdVal.appendChild(inVal);
+      tdAct.appendChild(saveBtn); tdAct.appendChild(delBtn);
+
+      tr.appendChild(tdKey); tr.appendChild(tdVal); tr.appendChild(tdAct);
+      dictTbody.appendChild(tr);
+    }
+    dictRaw.value = JSON.stringify(correctionDict, null, 2);
+  }
+
+  function updateDictCount(){
+    dictCountChip.textContent = Object.keys(correctionDict).length;
+  }
+
+  // Add new blank entry
+  addRowBtn.addEventListener('click', ()=>{
+    const suggestedKey = 'NEW';
+    let k = suggestedKey;
+    // find unique
+    let i=1; while (correctionDict[normalizeKey(k)]) { k = suggestedKey + i; i++; }
+    correctionDict[normalizeKey(k)] = 'REPLACEMENT';
+    renderDictTable(); updateDictCount(); saveDictToLocal();
+  });
+
+  // Export JSON
+  exportBtn.addEventListener('click', ()=>{
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(correctionDict, null, 2));
+    const a = document.createElement('a'); a.setAttribute('href', dataStr); a.setAttribute('download', 'qc_dictionary.json'); document.body.appendChild(a); a.click(); a.remove();
+  });
+
+  // Import JSON file
+  importFile.addEventListener('change', (ev)=>{
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const parsed = JSON.parse(e.target.result);
+        // normalize keys and merge
+        for (const k of Object.keys(parsed)) correctionDict[normalizeKey(k)] = parsed[k];
+        renderDictTable(); updateDictCount(); saveDictToLocal();
+        setStatus('Imported dictionary file.');
+      } catch(e){ alert('Invalid JSON file'); }
+    };
+    reader.readAsText(f);
+  });
+
+  // Apply JSON from textarea
+  applyJsonBtn.addEventListener('click', ()=>{
+    const t = dictRaw.value.trim();
+    if (!t) return alert('Paste or load JSON first');
+    try {
+      const parsed = JSON.parse(t);
+      correctionDict = {};
+      for (const k of Object.keys(parsed)) correctionDict[normalizeKey(k)] = parsed[k];
+      renderDictTable(); updateDictCount(); saveDictToLocal();
+      setStatus('Applied JSON to dictionary.');
+    } catch(e){ alert('Invalid JSON: ' + e); }
+  });
+
+  saveLocalBtn.addEventListener('click', ()=>{ saveDictToLocal(); setStatus('Saved dictionary to localStorage.'); });
+  loadLocalBtn.addEventListener('click', ()=>{ loadDictFromLocalOrDefault(); renderDictTable(); updateDictCount(); setStatus('Loaded dictionary from localStorage or default.'); });
+  resetBtn.addEventListener('click', ()=>{ if(!confirm('Reset dictionary to built-in defaults?')) return; correctionDict = {}; for (const k of Object.keys(defaultDict)) correctionDict[normalizeKey(k)] = defaultDict[k]; renderDictTable(); updateDictCount(); saveDictToLocal(); setStatus('Dictionary reset to defaults.'); });
+
+  showDictBtn.addEventListener('click', ()=>{
+    dictContainer.style.display = dictContainer.style.display === 'none' ? 'block' : 'none';
+  });
+
+  // ====== OCR + parser (same robust implementation as before) ======
+  function normalizeName(s){
+    if(!s) return '';
+    let t = s.toString();
+    t = t.replace(/[.,;:|_*"“”'`~(){}\[\]]+/g,'');
+    t = t.replace(/\s+/g,' ').trim();
+    t = t.toUpperCase();
+    if (/[A-Z]/.test(t) && /0/.test(t)) t = t.replace(/0/g,'O');
+    t = t.replace(/[^A-Z0-9\s\/\-\.%]/g,'');
+    return t;
+  }
+
+  function normalizeAndCorrectTestName(raw){
+    if(!raw) return '';
+    let s = normalizeName(raw);
+    if (correctionDict[normalizeKey(s)]) return correctionDict[normalizeKey(s)];
+    s = s.replace(/\b(MG\/DL|MGDL|G\/DL|U\/L|UL|MMOL|UG\/ML)\b/g,'').trim();
+    if (correctionDict[normalizeKey(s)]) return correctionDict[normalizeKey(s)];
+    const tokens = s.split(/\s+/).filter(Boolean);
+    if (tokens.length) {
+      if (correctionDict[normalizeKey(tokens[0])]) return correctionDict[normalizeKey(tokens[0])];
+      if (tokens.length>1 && correctionDict[normalizeKey(tokens[0] + ' ' + tokens[1])]) return correctionDict[normalizeKey(tokens[0] + ' ' + tokens[1])];
+    }
+    const tryVariants = [
+      s.replace(/I/g,'1'), s.replace(/1/g,'I'),
+      s.replace(/V/g,'U'), s.replace(/U/g,'V'),
+      s.replace(/L0/g,'LO'), s.replace(/O0/g,'OO')
+    ];
+    for (const v of tryVariants) if (correctionDict[normalizeKey(v)]) return correctionDict[normalizeKey(v)];
+    if (/^[A-Z]{2,6}$/.test(s)) return s;
+    return s.split(/\s+/).slice(0,3).join(' ');
+  }
+
+  // cluster words into rows
   function wordsToRows(words, tolerance=18) {
-    // words: array of {text, bbox: {x0,y0,x1,y1} }  (tesseract uses x0,y0,x1,y1 in data.words as bbox)
     const entries = words.map(w=>{
       const bbox = w.bbox || {x0:w.x0, y0:w.y0, x1:w.x1, y1:w.y1};
       const ycenter = (bbox.y0 + bbox.y1)/2;
       const xcenter = (bbox.x0 + bbox.x1)/2;
       return {text: w.text, ycenter, xcenter, bbox};
     }).filter(e => e.text && e.text.trim().length>0);
-    // sort by y
     entries.sort((a,b)=>a.ycenter - b.ycenter);
-    // cluster
     const rows = [];
     for (const e of entries) {
       let placed=false;
       for (const r of rows) {
-        // r.meanY = average y of row
         const dy = Math.abs(e.ycenter - r.meanY);
         if (dy <= tolerance) {
           r.items.push(e);
@@ -207,62 +356,139 @@
           placed=true; break;
         }
       }
-      if (!placed) {
-        rows.push({meanY: e.ycenter, items:[e]});
-      }
+      if (!placed) rows.push({meanY:e.ycenter, items:[e]});
     }
-    // sort words inside rows by x
-    const finalRows = rows.map(r => {
-      r.items.sort((a,b)=>a.xcenter - b.xcenter);
-      return r.items;
-    });
+    const finalRows = rows.map(r => { r.items.sort((a,b)=>a.xcenter - b.xcenter); return r.items; });
     return finalRows;
   }
 
-  // parse rows into {test,result,mean,sd}
-  function parseRowsWithNumbers(rows) {
-    const parsed = [];
-    for (const r of rows) {
-      const texts = r.map(x => x.text);
-      // join contiguous alphabetic tokens at start as test name
-      let testTokens = [];
-      const numbers = [];
-      for (const tok of texts) {
-        // clean token
-        const t = tok.replace(/[^\w\.\-\/%:+]/g,'').trim();
-        if (t === '') continue;
-        // numeric?
-        if (/^-?\d+(\.\d+)?$/.test(t)) {
-          numbers.push(t);
-        } else {
-          // maybe token contains digits with commas or stray characters, try extract numbers inside
-          const numIn = t.match(/-?\d+(\.\d+)?/g);
-          if (numIn && numIn.length) {
-            for (const n of numIn) numbers.push(n);
-          } else {
-            testTokens.push(t);
-          }
+  function detectColumnsFromRows(rows, bucketPixels=30) {
+    const xs = [];
+    for (const r of rows) for (const w of r) xs.push(w.xcenter);
+    if (!xs.length) return [];
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const buckets = Math.max(8, Math.ceil((maxX-minX)/bucketPixels));
+    const counts = new Array(buckets).fill(0), sums = new Array(buckets).fill(0);
+    for (const x of xs) {
+      const i = Math.min(buckets-1, Math.floor((x-minX)/(maxX-minX+1e-9) * buckets));
+      counts[i]++; sums[i]+=x;
+    }
+    const peaks = [];
+    for (let i=0;i<buckets;i++){
+      const left = (i>0?counts[i-1]:0), right=(i<buckets-1?counts[i+1]:0);
+      if (counts[i] >= left && counts[i] >= right && counts[i] > 2) {
+        const avgX = sums[i]/counts[i];
+        peaks.push({bucket:i, count:counts[i], x:avgX});
+      }
+    }
+    peaks.sort((a,b)=>a.x-b.x);
+    const merged = [];
+    for (const p of peaks) {
+      if (!merged.length) merged.push(p);
+      else {
+        const last = merged[merged.length-1];
+        if (Math.abs(p.x - last.x) < bucketPixels*0.9) {
+          last.x = (last.x*last.count + p.x*p.count) / (last.count + p.count);
+          last.count += p.count;
+        } else merged.push(p);
+      }
+    }
+    return merged.map(m=>m.x);
+  }
+
+  function assignWordsToColumns(rows, colXs) {
+    const assignedRows = rows.map(r => {
+      const cells = colXs.map(_=>[]);
+      for (const w of r) {
+        let best = 0, bestDist = Math.abs(w.xcenter - colXs[0]);
+        for (let i=1;i<colXs.length;i++){
+          const d = Math.abs(w.xcenter - colXs[i]);
+          if (d < bestDist) { bestDist = d; best = i; }
         }
+        cells[best].push(w.text);
       }
+      return cells.map(c=>c.join(' ').trim());
+    });
+    return assignedRows;
+  }
+
+  function detectNumericColumns(assignedRows) {
+    const cols = assignedRows[0] ? assignedRows[0].length : 0;
+    const numericScore = new Array(cols).fill(0);
+    const totalRows = assignedRows.length;
+    for (const r of assignedRows) {
+      for (let i=0;i<cols;i++){
+        const s = r[i] || '';
+        const numMatches = (s.match(/-?\d+(\.\d+)?/g) || []).length;
+        if (numMatches) numericScore[i] += 1;
+      }
+    }
+    return numericScore.map(s => s / Math.max(1,totalRows));
+  }
+
+  function parseUsingColumnDetection(rows, rawText) {
+    if (!rows.length) return [];
+    const colXs = detectColumnsFromRows(rows, 28);
+    if (colXs.length < 2) {
+      const old = rows.map(r => r.map(w => w.text));
+      return simpleRowsToParsed(old);
+    }
+    const assigned = assignWordsToColumns(rows, colXs);
+    const numericScores = detectNumericColumns(assigned);
+    const indexed = numericScores.map((s,i)=>({i,s}));
+    indexed.sort((a,b)=>b.s - a.s);
+    const numericCandidates = indexed.filter(x => x.s >= 0.25).map(x => x.i);
+    while (numericCandidates.length < 3 && numericCandidates.length < colXs.length) {
+      const next = indexed.filter(x=>!numericCandidates.includes(x.i))[numericCandidates.length];
+      if (!next) break;
+      numericCandidates.push(next.i);
+    }
+    numericCandidates.sort((a,b)=>a-b);
+    const nonNumericIndices = [];
+    for (let i=0;i<colXs.length;i++){
+      if (!numericCandidates.includes(i)) nonNumericIndices.push(i);
+    }
+    const testCol = nonNumericIndices.length ? nonNumericIndices[0] : Math.max(0, (numericCandidates[0]||0)-1);
+    const numericSortedByX = numericCandidates.slice().sort((a,b)=>colXs[a]-colXs[b]);
+    let pick = numericSortedByX.slice(-3);
+    if (pick.length < 3) {
+      for (const idx of numericSortedByX) {
+        if (!pick.includes(idx)) pick.unshift(idx);
+        if (pick.length===3) break;
+      }
+    }
+    pick.sort((a,b)=>colXs[a]-colXs[b]);
+
+    const parsed = assigned.map(cells => {
+      const rawTestCell = (cells[testCol] || '').replace(/[^\w\s\-\.\(\)\/%]/g,'').trim() || cells[0] || '';
+      const correctedTest = normalizeAndCorrectTestName(rawTestCell);
+      const result = parseFloat((cells[pick[0]]||'').replace(/[^0-9.\-]/g,'')) || null;
+      const mean   = parseFloat((cells[pick[1]]||'').replace(/[^0-9.\-]/g,'')) || null;
+      const sd     = parseFloat((cells[pick[2]]||'').replace(/[^0-9.\-]/g,'')) || null;
+      return {test: correctedTest, result, mean, sd, raw: cells.join(' | ')};
+    });
+    const filtered = parsed.filter(r => r.test && (r.result !== null || r.mean !== null || r.sd !== null));
+    return filtered.length ? filtered : parsed;
+  }
+
+  function simpleRowsToParsed(oldRows) {
+    const parsed = [];
+    for (const row of oldRows) {
+      const texts = row;
+      const nums = texts.join(' ').match(/-?\d+(\.\d+)?/g) || [];
       let result=null, mean=null, sd=null;
-      if (numbers.length >= 3) {
-        // take last 3 numbers as result, mean, sd
-        sd = parseFloat(numbers[numbers.length-1]);
-        mean = parseFloat(numbers[numbers.length-2]);
-        result = parseFloat(numbers[numbers.length-3]);
-      } else if (numbers.length === 2) {
-        result = parseFloat(numbers[0]);
-        mean = parseFloat(numbers[1]);
-      } else if (numbers.length === 1) {
-        result = parseFloat(numbers[0]);
-      }
-      const testName = testTokens.length ? testTokens.join(' ') : (texts[0] || 'UNKNOWN');
-      parsed.push({test:testName.trim(), result, mean, sd, raw: texts.join(' ')});
+      if (nums.length>=3) {
+        result=parseFloat(nums[nums.length-3]);
+        mean=parseFloat(nums[nums.length-2]);
+        sd=parseFloat(nums[nums.length-1]);
+      } else if (nums.length===2) { result=parseFloat(nums[0]); mean=parseFloat(nums[1]); }
+      const rawTest = texts.find(t => /[A-Za-z]/.test(t)) || texts[0] || '';
+      const test = normalizeAndCorrectTestName(rawTest);
+      parsed.push({test: test.trim(), result, mean, sd, raw: texts.join(' ')});
     }
     return parsed;
   }
 
-  // Westgard for single-run rows
   function applyWestgard(rows) {
     const flags = [];
     for (const r of rows) {
@@ -274,34 +500,30 @@
     return flags;
   }
 
-  function renderTable(parsedRows, rawSample='') {
-    if (!parsedRows.length) {
-      resultArea.innerHTML = '<div class="small">No rows parsed. Try cropping or increase row tolerance.</div>';
-      return;
-    }
+  function renderTable(rows) {
+    if (!rows.length) { resultArea.innerHTML = '<div class="small">No rows found. Try cropping or adjusting tolerance.</div>'; return; }
     let html = '<table><thead><tr><th>Test</th><th>Result</th><th>Mean</th><th>SD</th></tr></thead><tbody>';
-    parsedRows.forEach(r => {
-      html += `<tr><td>${escapeHtml(r.test)}</td><td>${r.result ?? '-'}</td><td>${r.mean ?? '-'}</td><td>${r.sd ?? '-'}</td></tr>`;
-    });
-    html += `</tbody></table><div style="margin-top:8px" class="small">Raw OCR sample: ${escapeHtml(rawSample.slice(0,400))}</div>`;
+    for (const r of rows) {
+      html += `<tr><td style="text-align:left">${escapeHtml(r.test)}</td><td>${r.result ?? '-'}</td><td>${r.mean ?? '-'}</td><td>${r.sd ?? '-'}</td></tr>`;
+    }
+    html += '</tbody></table>';
     resultArea.innerHTML = html;
   }
+
   function renderFindings(flags) {
     if (!flags.length) { findings.innerHTML = '<div style="color:green;font-weight:700">No Westgard violations detected.</div>'; return; }
     let html = '<ul style="padding-left:18px">';
-    for (const f of flags) {
-      const cls = f.rule.includes('3s') ? 'flag-danger' : 'flag-warning';
-      html += `<li><span class="${cls}">${escapeHtml(f.test)} — ${escapeHtml(f.rule)}</span> <span class="small"> (z=${(f.z||0).toFixed(2)})</span></li>`;
-    }
+    for (const f of flags) html += `<li><span class="flag-danger">${escapeHtml(f.test)} — ${escapeHtml(f.rule)}</span> <span class="small"> (z=${(f.z||0).toFixed(2)})</span></li>`;
     html += '</ul>';
     findings.innerHTML = html;
   }
+
   function escapeHtml(s){ return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-  // OCR using Tesseract.recognize, fetch lang from CDN
+  // OCR call
   async function doOCR(imageSource) {
     try {
-      setStatus('Running OCR — this may take 10–40s (model fetch may happen once)...');
+      setStatus('Running OCR — fetching model if needed...');
       showProgress(0.02);
       const options = {
         langPath: TESS_LANG_PATH,
@@ -313,42 +535,45 @@
           }
         }
       };
-      // use recognize
       const res = await Tesseract.recognize(imageSource, 'eng', options);
       hideProgress();
-      setStatus('OCR complete — parsing words');
-      // data.words has word-level info (text, bbox)
+      setStatus('OCR complete — constructing rows');
       const words = (res && res.data && res.data.words) ? res.data.words : [];
       const rawtext = (res && res.data && res.data.text) ? res.data.text : (res && res.text) || '';
-      log('words length: ' + words.length);
-      // convert Tesseract word entries to standard bbox shape if needed
-      // some builds provide {x0,y0,x1,y1} or provide bbox property
-      const mappedWords = words.map(w => {
-        // w has text, bbox or x0,y0,x1,y1 depending on build
-        // normalize to {text, bbox:{x0,y0,x1,y1}}
-        if (w.bbox) return {text:w.text, bbox:w.bbox};
-        // fallback to properties
-        return {text:w.text, bbox:{x0: w.x0 || w.bbox?.x0 || (w.x || 0), y0: w.y0 || w.bbox?.y0 || (w.y || 0), x1: w.x1 || w.bbox?.x1 || ((w.x||0)+ (w.w||0)), y1: w.y1 || w.bbox?.y1 || ((w.y||0)+(w.h||0))}};
+      log('OCR words: ' + words.length);
+
+      const mapped = words.map(w => {
+        if (w.bbox) return {text:w.text, bbox:w.bbox, x0:w.bbox.x0,y0:w.bbox.y0,x1:w.bbox.x1,y1:w.bbox.y1};
+        return {text:w.text, bbox:{x0:w.x0,y0:w.y0,x1:w.x1,y1:w.y1}, x0:w.x0,y0:w.y0,x1:w.x1,y1:w.y1};
       });
 
-      // cluster into rows
       const tol = parseInt(tolInput.value || '18', 10);
-      const rows = wordsToRows(mappedWords, tol);
+      const rows = wordsToRows(mapped, tol);
       log('clustered rows: ' + rows.length);
-      const parsed = parseRowsWithNumbers(rows);
-      renderTable(parsed, rawtext);
-      const flags = applyWestgard(parsed);
+
+      const parsed = parseUsingColumnDetection(rows, rawtext);
+      log('parsed rows: ' + parsed.length);
+
+      const cleaned = parsed.filter(r => {
+        if (!r.test || r.test.length < 2) return false;
+        if (r.result==null && r.mean==null && r.sd==null) return false;
+        return true;
+      });
+
+      renderTable(cleaned);
+      const flags = applyWestgard(cleaned);
       renderFindings(flags);
+
     } catch (err) {
       hideProgress();
       setStatus('OCR failed: ' + (err.message || err), false);
       log('OCR error: ' + err);
-      resultArea.innerHTML = '<div class="small">OCR failed. Try cropping the table, increasing tolerance, or reducing contrast.</div>';
+      resultArea.innerHTML = '<div class="small">OCR failed. Try cropping or lowering contrast.</div>';
       findings.innerHTML = '';
     }
   }
 
-  // handle file selection + preprocessing
+  // file selection and preprocessing
   let lastPrepared = null;
   fileInput.addEventListener('change', async (ev) => {
     const f = ev.target.files && ev.target.files[0];
@@ -357,25 +582,19 @@
     showProgress(0.02);
     try {
       const prepared = await downscaleImage(f, 1400);
-      // fetch contrast/threshold options
-      const contrast = parseFloat(contrastInput.value || '1.2');
+      const contrast = parseFloat(contrastInput.value || '1.0');
       const doThreshold = threshCheckbox.checked;
-      // preprocess canvas
       const procCanvas = preprocessCanvasFromImage(prepared.imgElement, contrast, doThreshold);
       const previewDataURL = procCanvas.toDataURL('image/jpeg', 0.9);
       preview.style.display='block';
       preview.innerHTML = `<img src="${previewDataURL}" alt="preview">`;
-      // convert to blob for Tesseract
       procCanvas.toBlob(blob => {
         lastPrepared = {blob, previewDataURL};
         setStatus('Image ready. Tap Start OCR or wait a moment to auto-run...');
         hideProgress();
-        // auto-run briefly after selection
         setTimeout(() => {
-          if (lastPrepared && lastPrepared.previewDataURL === previewDataURL) {
-            startOCR();
-          }
-        }, 700);
+          if (lastPrepared && lastPrepared.previewDataURL === previewDataURL) startOCR();
+        }, 800);
       }, 'image/jpeg', 0.9);
     } catch (e) {
       hideProgress();
@@ -384,7 +603,6 @@
     }
   });
 
-  // downscale helper reused
   async function downscaleImage(file, maxDim=1400){
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -407,19 +625,63 @@
     });
   }
 
-  // start OCR button
+  function preprocessCanvasFromImage(imgElement, contrast=1.0, doThreshold=false) {
+    const w = imgElement.width, h = imgElement.height;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(imgElement, 0, 0, w, h);
+    const id = ctx.getImageData(0,0,w,h);
+    const d = id.data;
+    for (let i=0;i<d.length;i+=4) {
+      const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      let v = (lum - 128) * contrast + 128;
+      v = Math.max(0, Math.min(255, v));
+      d[i]=d[i+1]=d[i+2]=v;
+    }
+    ctx.putImageData(id,0,0);
+    if (doThreshold) {
+      const ctx2 = c.getContext('2d');
+      const id2 = ctx2.getImageData(0,0,w,h);
+      const d2 = id2.data;
+      const block = Math.max(12, Math.floor(Math.min(w,h)/50));
+      for (let by=0; by<h; by+=block) {
+        for (let bx=0; bx<w; bx+=block) {
+          let sum=0, count=0;
+          for (let yy=by; yy<Math.min(h,by+block); yy++) {
+            for (let xx=bx; xx<Math.min(w,bx+block); xx++) {
+              const idx=(yy*w+xx)*4; sum+=d2[idx]; count++;
+            }
+          }
+          const avg = sum / Math.max(1,count);
+          for (let yy=by; yy<Math.min(h,by+block); yy++) {
+            for (let xx=bx; xx<Math.min(w,bx+block); xx++) {
+              const idx=(yy*w+xx)*4;
+              const v = d2[idx] < (avg - 20) ? 0 : 255;
+              d2[idx]=d2[idx+1]=d2[idx+2]=v;
+            }
+          }
+        }
+      }
+      ctx2.putImageData(id2,0,0);
+    }
+    return c;
+  }
+
   async function startOCR() {
     if (!lastPrepared) { setStatus('No image ready. Please choose an image first.', false); return; }
     setStatus('Running OCR now...');
     showProgress(0.05);
-    // pass DataURL (preview) or blob (both accepted)
     await doOCR(lastPrepared.previewDataURL || lastPrepared.blob);
   }
   startBtn.addEventListener('click', startOCR);
 
+  // ====== initialization: load dict & render
+  loadDictFromLocalOrDefault();
+  renderDictTable();
+  updateDictCount();
   setStatus('Ready. Upload a QC screenshot (cropped to table helps).');
 
-  // end
 })();
 </script>
 </body>
