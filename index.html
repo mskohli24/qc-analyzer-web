@@ -2,11 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>QC Analyzer — Robust Client-side OCR (fixed)</title>
+  <title>QC Analyzer — Preprocessed OCR + Robust Parser</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <!-- Tesseract.js (core CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
-
   <style>
     :root{--bg:#f7f9fc;--card:#fff;--muted:#6b7280;--accent:#0366d6;--danger:#c02616;--radius:12px}
     body{background:var(--bg);margin:0;padding:14px;font-family:Inter,system-ui,Roboto,Arial;color:#111}
@@ -23,23 +21,36 @@
     .status{margin-top:10px;font-size:0.95rem;color:#333}
     .progress{height:8px;background:#eef2ff;border-radius:999px;overflow:hidden;margin-top:8px}
     .progress > span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#5aa0ff);width:0%}
-    pre.debug{background:#0b1220;color:#e6f0ff;padding:8px;border-radius:8px;max-height:180px;overflow:auto;font-size:0.8rem}
+    pre.debug{background:#0b1220;color:#e6f0ff;padding:8px;border-radius:8px;max-height:220px;overflow:auto;font-size:0.8rem}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    th,td{padding:6px;border-bottom:1px solid #f1f5f9;text-align:center;font-size:0.9rem}
+    th{background:#fbfdff;font-weight:700}
+    .flag-danger{color:#c02616;font-weight:700}
+    .flag-warning{color:#b45309;font-weight:700}
     button.primary{background:var(--accent);color:#fff;border:none;padding:8px 10px;border-radius:8px;cursor:pointer}
+    .controls{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+    .small-input{padding:6px;border-radius:8px;border:1px solid #ddd;font-size:0.9rem}
+    footer.note{margin-top:10px;color:var(--muted);font-size:0.85rem;text-align:center}
   </style>
 </head>
 <body>
   <div class="container">
     <div class="card">
-      <h1>AI QC Analyzer — Robust OCR (fixed)</h1>
-      <div class="hint">Upload a clear screenshot of the QC table (Test / Result / Mean / SD). OCR runs in your browser — nothing is uploaded.</div>
+      <h1>QC Analyzer — Preprocessed OCR + Robust Parser</h1>
+      <div class="hint">Upload a screenshot of your QC table (Test / Result / Mean / SD). OCR runs in your browser — nothing is uploaded.</div>
 
-      <div style="margin-top:12px" class="row">
+      <div class="row" style="margin-top:12px;">
         <label for="fileinput" class="upload-btn">📤 Click here to upload QC image</label>
         <input id="fileinput" type="file" accept="image/*">
         <button id="startBtn" class="primary" style="margin-left:auto">Start OCR</button>
       </div>
 
-      <div class="hint">Tip: crop to just the table numeric columns for best results. If OCR doesn't start automatically, tap <em>Start OCR</em>.</div>
+      <div class="controls">
+        <div class="small">Row clustering tolerance(px): <input id="tol" class="small-input" type="number" value="18" min="2" style="width:80px"></div>
+        <div class="small">Contrast boost (0–2): <input id="contrast" class="small-input" type="number" value="1.2" step="0.1" min="0.5" max="3" style="width:80px"></div>
+        <div class="small">Apply threshold: <input id="thresh" type="checkbox" checked></div>
+        <div class="small" style="margin-left:auto">If parser fails try increasing tolerance or cropping to numeric columns.</div>
+      </div>
 
       <div id="status" class="status small">Initializing...</div>
       <div class="progress" id="prog" style="display:none"><span id="progFill"></span></div>
@@ -59,14 +70,14 @@
 
     <div class="card">
       <h3 style="margin:0 0 8px 0">Debug / Logs</h3>
-      <div><strong class="small">Status messages:</strong></div>
       <pre id="log" class="debug">waiting...</pre>
     </div>
+
+    <footer class="note">Tip: for best results crop to just the table area (Test / Result / Mean / SD). You can adjust tolerance/contrast above.</footer>
   </div>
 
 <script>
 (async () => {
-  // DOM refs
   const fileInput = document.getElementById('fileinput');
   const preview = document.getElementById('preview');
   const status = document.getElementById('status');
@@ -76,27 +87,24 @@
   const findings = document.getElementById('findings');
   const logBox = document.getElementById('log');
   const startBtn = document.getElementById('startBtn');
+  const tolInput = document.getElementById('tol');
+  const contrastInput = document.getElementById('contrast');
+  const threshCheckbox = document.getElementById('thresh');
 
-  function log(s) { console.log(s); logBox.textContent = (new Date()).toLocaleTimeString() + " — " + s + "\n" + logBox.textContent; }
+  const TESS_LANG_PATH = 'https://tessdata.projectnaptha.com/4.0.0';
+
+  function log(s){ console.log(s); logBox.textContent = (new Date()).toLocaleTimeString() + " — " + s + "\n" + logBox.textContent; }
   function setStatus(s){ status.textContent = s; log(s); }
   function showProgress(p){ prog.style.display='block'; progFill.style.width = Math.round(p*100)+'%'; }
   function hideProgress(){ prog.style.display='none'; progFill.style.width='0%'; }
 
-  // We'll use the simple Tesseract.recognize API and point langPath to CDN
-  const TESS_LANG_PATH = 'https://tessdata.projectnaptha.com/4.0.0';
-
-  // initialization: test that Tesseract.recognize exists
+  // check Tesseract availability
   if (!Tesseract || typeof Tesseract.recognize !== 'function') {
-    setStatus('Tesseract.js not available or incompatible. Try Chrome browser.', false);
-    log('Tesseract.recognize missing. Loaded object: ' + (typeof Tesseract));
-    return;
-  } else {
-    setStatus('Tesseract ready (will fetch models on demand).');
-    log('Tesseract.recognize ready');
-  }
+    setStatus('Tesseract.js not available. Try Chrome on Android.'); log('Tesseract.recognize missing'); return;
+  } else { setStatus('Tesseract ready.'); log('Tesseract ready'); }
 
-  // downscale large images for mobile devices
-  async function downscaleImage(file, maxDim=1200){
+  // downscale helper
+  async function downscaleImage(file, maxDim=1400){
     return new Promise((resolve, reject) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
@@ -110,80 +118,191 @@
         ctx.drawImage(img, 0, 0, w, h);
         canvas.toBlob(blob => {
           URL.revokeObjectURL(url);
-          resolve({blob, previewImg: canvas.toDataURL('image/jpeg', 0.85)});
+          resolve({blob, imgElement:img, canvas, previewImg: canvas.toDataURL('image/jpeg', 0.85)});
         }, 'image/jpeg', 0.85);
       };
-      img.onerror = (err) => { URL.revokeObjectURL(url); reject(err); };
+      img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
       img.src = url;
     });
   }
 
-  // parse OCR text into rows
-  function parseTextToRows(raw) {
-    if (!raw) return [];
-    const lines = raw.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-    const rows = [];
-    for (let ln of lines) {
-      if (/mean|sd|result|test|flag|sr|lot|consumable|curve|interval/i.test(ln)) continue;
-      const nums = ln.match(/[-+]?\d*\.?\d+/g) || [];
-      const toks = ln.split(/\s+/);
-      const testTok = toks.find(t => /[A-Za-z]/.test(t)) || 'UNKNOWN';
-      let result=null, mean=null, sd=null;
-      if (nums.length>=3) {
-        result = parseFloat(nums[nums.length-3]);
-        mean   = parseFloat(nums[nums.length-2]);
-        sd     = parseFloat(nums[nums.length-1]);
-      }
-      rows.push({test:testTok.toUpperCase(), result, mean, sd, raw:ln});
+  // preprocessing: grayscale, contrast, optional threshold, remove thin lines (simple)
+  function preprocessCanvasFromImage(imgElement, contrast=1.2, doThreshold=true) {
+    // draw to temp canvas
+    const w = imgElement.width, h = imgElement.height;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(imgElement, 0, 0, w, h);
+    const id = ctx.getImageData(0,0,w,h);
+    const d = id.data;
+
+    // grayscale + contrast
+    const factor = (259*(contrast*255 + 255)) / (255*(259 - contrast*255) || 1); // approximate contrast mapping
+    for (let i=0;i<d.length;i+=4) {
+      // luminance
+      const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      // apply contrast (center around 128)
+      let v = factor*(lum - 128) + 128;
+      v = Math.max(0, Math.min(255, v));
+      d[i]=d[i+1]=d[i+2]=v;
     }
-    return rows;
+    ctx.putImageData(id,0,0);
+
+    if (doThreshold) {
+      // simple adaptive-ish threshold by local block average
+      const block = 16;
+      const ctx2 = c.getContext('2d');
+      const id2 = ctx2.getImageData(0,0,w,h);
+      const d2 = id2.data;
+      for (let by=0; by<h; by+=block) {
+        for (let bx=0; bx<w; bx+=block) {
+          // compute average luminance in block
+          let sum=0, count=0;
+          for (let yy=by; yy<Math.min(h,by+block); yy++) {
+            for (let xx=bx; xx<Math.min(w,bx+block); xx++) {
+              const idx = (yy*w + xx)*4;
+              sum += d2[idx];
+              count++;
+            }
+          }
+          const avg = sum / Math.max(1,count);
+          // threshold block
+          for (let yy=by; yy<Math.min(h,by+block); yy++) {
+            for (let xx=bx; xx<Math.min(w,bx+block); xx++) {
+              const idx = (yy*w + xx)*4;
+              const v = d2[idx] < (avg - 10) ? 0 : 255;
+              d2[idx]=d2[idx+1]=d2[idx+2]=v;
+            }
+          }
+        }
+      }
+      ctx2.putImageData(id2,0,0);
+    }
+
+    return c;
   }
 
-  // Westgard checks
+  // group words into rows by y-center clustering
+  function wordsToRows(words, tolerance=18) {
+    // words: array of {text, bbox: {x0,y0,x1,y1} }  (tesseract uses x0,y0,x1,y1 in data.words as bbox)
+    const entries = words.map(w=>{
+      const bbox = w.bbox || {x0:w.x0, y0:w.y0, x1:w.x1, y1:w.y1};
+      const ycenter = (bbox.y0 + bbox.y1)/2;
+      const xcenter = (bbox.x0 + bbox.x1)/2;
+      return {text: w.text, ycenter, xcenter, bbox};
+    }).filter(e => e.text && e.text.trim().length>0);
+    // sort by y
+    entries.sort((a,b)=>a.ycenter - b.ycenter);
+    // cluster
+    const rows = [];
+    for (const e of entries) {
+      let placed=false;
+      for (const r of rows) {
+        // r.meanY = average y of row
+        const dy = Math.abs(e.ycenter - r.meanY);
+        if (dy <= tolerance) {
+          r.items.push(e);
+          r.meanY = (r.meanY * (r.items.length-1) + e.ycenter) / r.items.length;
+          placed=true; break;
+        }
+      }
+      if (!placed) {
+        rows.push({meanY: e.ycenter, items:[e]});
+      }
+    }
+    // sort words inside rows by x
+    const finalRows = rows.map(r => {
+      r.items.sort((a,b)=>a.xcenter - b.xcenter);
+      return r.items;
+    });
+    return finalRows;
+  }
+
+  // parse rows into {test,result,mean,sd}
+  function parseRowsWithNumbers(rows) {
+    const parsed = [];
+    for (const r of rows) {
+      const texts = r.map(x => x.text);
+      // join contiguous alphabetic tokens at start as test name
+      let testTokens = [];
+      const numbers = [];
+      for (const tok of texts) {
+        // clean token
+        const t = tok.replace(/[^\w\.\-\/%:+]/g,'').trim();
+        if (t === '') continue;
+        // numeric?
+        if (/^-?\d+(\.\d+)?$/.test(t)) {
+          numbers.push(t);
+        } else {
+          // maybe token contains digits with commas or stray characters, try extract numbers inside
+          const numIn = t.match(/-?\d+(\.\d+)?/g);
+          if (numIn && numIn.length) {
+            for (const n of numIn) numbers.push(n);
+          } else {
+            testTokens.push(t);
+          }
+        }
+      }
+      let result=null, mean=null, sd=null;
+      if (numbers.length >= 3) {
+        // take last 3 numbers as result, mean, sd
+        sd = parseFloat(numbers[numbers.length-1]);
+        mean = parseFloat(numbers[numbers.length-2]);
+        result = parseFloat(numbers[numbers.length-3]);
+      } else if (numbers.length === 2) {
+        result = parseFloat(numbers[0]);
+        mean = parseFloat(numbers[1]);
+      } else if (numbers.length === 1) {
+        result = parseFloat(numbers[0]);
+      }
+      const testName = testTokens.length ? testTokens.join(' ') : (texts[0] || 'UNKNOWN');
+      parsed.push({test:testName.trim(), result, mean, sd, raw: texts.join(' ')});
+    }
+    return parsed;
+  }
+
+  // Westgard for single-run rows
   function applyWestgard(rows) {
     const flags = [];
-    rows.forEach((r) => {
-      if (r.result == null || r.mean == null || r.sd == null || r.sd <= 0) return;
+    for (const r of rows) {
+      if (r.result == null || r.mean == null || r.sd == null || r.sd <= 0) continue;
       const z = (r.result - r.mean) / r.sd;
       if (Math.abs(z) > 3) flags.push({test:r.test, rule:'1:3s Violation', z});
       else if (Math.abs(z) > 2) flags.push({test:r.test, rule:'1:2s Warning', z});
-    });
+    }
     return flags;
   }
 
-  function renderRows(rows, rawText) {
-    if (!rows.length) {
-      resultArea.innerHTML = '<div class="small">No rows detected. Try cropping to the numeric columns and re-upload.</div>';
+  function renderTable(parsedRows, rawSample='') {
+    if (!parsedRows.length) {
+      resultArea.innerHTML = '<div class="small">No rows parsed. Try cropping or increase row tolerance.</div>';
       return;
     }
-    let html = '<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#fafafa"><th style="padding:6px">Test</th><th>Result</th><th>Mean</th><th>SD</th></tr></thead><tbody>';
-    rows.forEach(r => {
-      html += `<tr><td style="padding:6px">${escapeHtml(r.test)}</td><td>${r.result ?? '-'}</td><td>${r.mean ?? '-'}</td><td>${r.sd ?? '-'}</td></tr>`;
+    let html = '<table><thead><tr><th>Test</th><th>Result</th><th>Mean</th><th>SD</th></tr></thead><tbody>';
+    parsedRows.forEach(r => {
+      html += `<tr><td>${escapeHtml(r.test)}</td><td>${r.result ?? '-'}</td><td>${r.mean ?? '-'}</td><td>${r.sd ?? '-'}</td></tr>`;
     });
-    html += `</tbody></table><div style="margin-top:8px" class="small">Raw OCR sample: ${escapeHtml(rawText.slice(0,400))}</div>`;
+    html += `</tbody></table><div style="margin-top:8px" class="small">Raw OCR sample: ${escapeHtml(rawSample.slice(0,400))}</div>`;
     resultArea.innerHTML = html;
   }
-
   function renderFindings(flags) {
     if (!flags.length) { findings.innerHTML = '<div style="color:green;font-weight:700">No Westgard violations detected.</div>'; return; }
-    let html = '<ul style="padding-left:18px;margin:0">';
-    flags.forEach(f => {
-      const cls = f.rule.includes('3s') ? 'color:#c02616' : 'color:#b45309';
-      html += `<li style="margin-bottom:6px"><span style="${cls};font-weight:700">${escapeHtml(f.test)} — ${escapeHtml(f.rule)}</span> <span class="small"> (z=${f.z.toFixed(2)})</span></li>`;
-    });
+    let html = '<ul style="padding-left:18px">';
+    for (const f of flags) {
+      const cls = f.rule.includes('3s') ? 'flag-danger' : 'flag-warning';
+      html += `<li><span class="${cls}">${escapeHtml(f.test)} — ${escapeHtml(f.rule)}</span> <span class="small"> (z=${(f.z||0).toFixed(2)})</span></li>`;
+    }
     html += '</ul>';
     findings.innerHTML = html;
   }
-
   function escapeHtml(s){ return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-  // ---- OCR using Tesseract.recognize (no worker API) ----
-  async function doOCR_usingRecognize(source) {
+  // OCR using Tesseract.recognize, fetch lang from CDN
+  async function doOCR(imageSource) {
     try {
-      setStatus('Starting OCR (recognize)...');
+      setStatus('Running OCR — this may take 10–40s (model fetch may happen once)...');
       showProgress(0.02);
-
-      // Tesseract.recognize accepts image (blob/dataURL) + lang + options
       const options = {
         langPath: TESS_LANG_PATH,
         logger: m => {
@@ -194,56 +313,85 @@
           }
         }
       };
-
-      const result = await Tesseract.recognize(source, 'eng', options);
+      // use recognize
+      const res = await Tesseract.recognize(imageSource, 'eng', options);
       hideProgress();
-      setStatus('OCR complete — parsing text');
+      setStatus('OCR complete — parsing words');
+      // data.words has word-level info (text, bbox)
+      const words = (res && res.data && res.data.words) ? res.data.words : [];
+      const rawtext = (res && res.data && res.data.text) ? res.data.text : (res && res.text) || '';
+      log('words length: ' + words.length);
+      // convert Tesseract word entries to standard bbox shape if needed
+      // some builds provide {x0,y0,x1,y1} or provide bbox property
+      const mappedWords = words.map(w => {
+        // w has text, bbox or x0,y0,x1,y1 depending on build
+        // normalize to {text, bbox:{x0,y0,x1,y1}}
+        if (w.bbox) return {text:w.text, bbox:w.bbox};
+        // fallback to properties
+        return {text:w.text, bbox:{x0: w.x0 || w.bbox?.x0 || (w.x || 0), y0: w.y0 || w.bbox?.y0 || (w.y || 0), x1: w.x1 || w.bbox?.x1 || ((w.x||0)+ (w.w||0)), y1: w.y1 || w.bbox?.y1 || ((w.y||0)+(w.h||0))}};
+      });
 
-      const raw = result.data ? result.data.text : (result.text || '');
-      const rows = parseTextToRows(raw);
-      renderRows(rows, raw);
-      renderFindings(applyWestgard(rows));
+      // cluster into rows
+      const tol = parseInt(tolInput.value || '18', 10);
+      const rows = wordsToRows(mappedWords, tol);
+      log('clustered rows: ' + rows.length);
+      const parsed = parseRowsWithNumbers(rows);
+      renderTable(parsed, rawtext);
+      const flags = applyWestgard(parsed);
+      renderFindings(flags);
     } catch (err) {
       hideProgress();
       setStatus('OCR failed: ' + (err.message || err), false);
       log('OCR error: ' + err);
-      resultArea.innerHTML = '<div class="small">OCR failed. Try cropping to numeric columns or use a different photo.</div>';
+      resultArea.innerHTML = '<div class="small">OCR failed. Try cropping the table, increasing tolerance, or reducing contrast.</div>';
       findings.innerHTML = '';
     }
   }
 
-  // file handling & downscaling
+  // handle file selection + preprocessing
   let lastPrepared = null;
-  fileInput.addEventListener('change', async (evt) => {
-    const f = evt.target.files && evt.target.files[0];
+  fileInput.addEventListener('change', async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
     if (!f) return;
-    setStatus('Image selected. Preparing (downscaling) — please wait');
+    setStatus('Preparing image (downscale + preprocess)...');
     showProgress(0.02);
     try {
-      const prepared = await downscaleImage(f, 1200);
-      lastPrepared = prepared;
-      preview.style.display = 'block';
-      preview.innerHTML = `<img src="${prepared.previewImg}" alt="preview">`;
-      setStatus('Image ready. Tap Start OCR to begin (or it will auto-run shortly)...');
-      hideProgress();
-      setTimeout(() => {
-        if (lastPrepared === prepared) { startOCR(); }
-      }, 900);
+      const prepared = await downscaleImage(f, 1400);
+      // fetch contrast/threshold options
+      const contrast = parseFloat(contrastInput.value || '1.2');
+      const doThreshold = threshCheckbox.checked;
+      // preprocess canvas
+      const procCanvas = preprocessCanvasFromImage(prepared.imgElement, contrast, doThreshold);
+      const previewDataURL = procCanvas.toDataURL('image/jpeg', 0.9);
+      preview.style.display='block';
+      preview.innerHTML = `<img src="${previewDataURL}" alt="preview">`;
+      // convert to blob for Tesseract
+      procCanvas.toBlob(blob => {
+        lastPrepared = {blob, previewDataURL};
+        setStatus('Image ready. Tap Start OCR or wait a moment to auto-run...');
+        hideProgress();
+        // auto-run briefly after selection
+        setTimeout(() => {
+          if (lastPrepared && lastPrepared.previewDataURL === previewDataURL) {
+            startOCR();
+          }
+        }, 700);
+      }, 'image/jpeg', 0.9);
     } catch (e) {
       hideProgress();
-      setStatus('Image preparation failed: ' + (e.message || e), false);
-      log('downscale error: ' + e);
+      setStatus('Image prep failed: ' + (e.message || e), false);
+      log('prep error: ' + e);
     }
   });
 
-  // downscale helper
-  async function downscaleImage(file, maxDim=1200){
+  // downscale helper reused
+  async function downscaleImage(file, maxDim=1400){
     return new Promise((resolve, reject) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
       img.onload = () => {
         let {width:w, height:h} = img;
-        let scale = Math.min(1, maxDim / Math.max(w,h));
+        const scale = Math.min(1, maxDim / Math.max(w,h));
         if (scale < 1) { w = Math.round(w*scale); h = Math.round(h*scale); }
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
@@ -251,27 +399,27 @@
         ctx.drawImage(img, 0, 0, w, h);
         canvas.toBlob(blob => {
           URL.revokeObjectURL(url);
-          resolve({blob, previewImg: canvas.toDataURL('image/jpeg', 0.85)});
-        }, 'image/jpeg', 0.85);
+          resolve({blob, imgElement: img, canvas});
+        }, 'image/jpeg', 0.9);
       };
       img.onerror = (err) => { URL.revokeObjectURL(url); reject(err); };
       img.src = url;
     });
   }
 
+  // start OCR button
   async function startOCR() {
-    if (!lastPrepared) { setStatus('No image selected. Please choose an image first.', false); return; }
-    setStatus('Running OCR — this may take 10–60s depending on device');
+    if (!lastPrepared) { setStatus('No image ready. Please choose an image first.', false); return; }
+    setStatus('Running OCR now...');
     showProgress(0.05);
-
-    // Use the preview DataURL (works in all browsers) to avoid blob issues
-    await doOCR_usingRecognize(lastPrepared.previewImg);
+    // pass DataURL (preview) or blob (both accepted)
+    await doOCR(lastPrepared.previewDataURL || lastPrepared.blob);
   }
   startBtn.addEventListener('click', startOCR);
 
-  // initial status
-  setStatus('Ready. Please upload a QC image.');
+  setStatus('Ready. Upload a QC screenshot (cropped to table helps).');
 
+  // end
 })();
 </script>
 </body>
